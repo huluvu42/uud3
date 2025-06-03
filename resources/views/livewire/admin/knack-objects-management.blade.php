@@ -1,131 +1,208 @@
-<!-- Filter Konfiguration -->
-            <div class="mb-8">
-                <h3 class="text-lg font-semibold mb-4">Filter Einstellungen</h3>
-                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                    <p class="text-sm text-blue-800">
-                        <strong>Optional:</strong> Filter können leer gelassen werden um alle Datensätze zu importieren.
-                        <br><strong>Wichtig:</strong> Fügen Sie jeden Filter einzeln hinzu! Nicht mehrere Filter gleichzeitig in ein Feld eingeben.
-                    </p>
-                </div>
-                
-                <!-- Include Filter -->
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">
-                        Include Filter - <span class="text-gray-500">(optional)</span>
-                        <br><span class="text-xs text-gray-500">Jobliste muss einen dieser Werte enthalten</span>
-                    </label>
-                    <div class="flex gap-2 mb-2">
-                        <input 
-                            type="text" 
-                            wire:model="newIncludeFilter"
-                            wire:keydown.enter="addIncludeFilter"
-                            class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Einen Filter eingeben (z.B. Mitarbeiter) und auf 'Hinzufügen' klicken"
-                        >
-                        <button 
-                            wire:click="addIncludeFilter"
-                            class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-                        >
-                            Hinzufügen
-                        </button>
-                    </div>
-                    
-                    <div class="bg-yellow-50 border border-yellow-200 rounded p-2 mb-3">
-                        <p class="text-xs text-yellow-800">
-                            💡 <strong>Tipp:</strong> Fügen Sie jeden Begriff einzeln hinzu (z.B. erst "Mitarbeiter", dann "Backstage"). 
-                            Geben Sie nicht "Mitarbeiter, Backstage" in ein Feld ein!
-                        </p>
-                    </div>
-                    
-                    @if(count($includeFilters) > 0)
-                        <div class="flex flex-wrap gap-2 mb-2">
-                            @foreach($includeFilters as $index => $filter)
-                                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm bg-green-100 text-green-800">
-                                    {{ $filter }}
-                                    <button 
-                                        wire:click="removeIncludeFilter({{ $index }})"
-                                        class="ml-2 text-green-600 hover:text-green-800"
-                                        title="Filter entfernen"
-                                    >
-                                        ×
-                                    </button>
-                                </span>
-                            @endforeach
-                        </div>
-                        <p class="text-xs text-green-600 font-medium">
-                            ✓ {{ count($includeFilters) }} Include-Filter aktiv: 
-                            Jobliste muss mindestens einen der obigen Begriffe enthalten
-                        </p>
-                    @else
-                        <p class="text-xs text-gray-500 italic">Keine Include-Filter gesetzt - alle Datensätze werden berücksichtigt</p>
-                    @endif
-                </div>
+{{-- resources/views/livewire/admin/knack-objects-management.blade.php --}}
 
-                <!-- Exclude Filter -->
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">
-                        Exclude Filter - <span class="text-gray-500">(optional)</span>
-                        <br><span class="text-xs text-gray-500">Jobliste darf diese Werte NICHT enthalten</span>
-                    </label>
-                    <div class="flex gap-2 mb-2">
-                        <input 
-                            type="text" 
-                            wire:model="newExcludeFilter"
-                            wire:keydown.enter="addExcludeFilter"
-                            class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Einen Filter eingeben (z.B. Abbau) und auf 'Hinzufügen' klicken"
-                        >
-                        <button 
-                            wire:click="addExcludeFilter"
-                            class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-                        >
-                            Hinzufügen
-                        </button>
-                    </div>
-                    
-                    <div class="bg-yellow-50 border border-yellow-200 rounded p-2 mb-3">
-                        <p class="text-xs text-yellow-800">
-                            💡 <strong>Tipp:</strong> Fügen Sie jeden Begriff einzeln hinzu (z.B. erst "Abbau", dann "extern"). 
-                            Geben Sie nicht "Abbau, extern" in ein Feld ein!
-                        </p>
-                    </div>
-                    
-                    @if(count($excludeFilters) > 0)
-                        <div class="flex flex-wrap gap-2 mb-2">
-                            @foreach($excludeFilters as $index => $filter)
-                                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm bg-red-100 text-red-800">
-                                    {{ $filter }}
-                                    <button 
-                                        wire:click="removeExcludeFilter({{ $index }})"
-                                        class="ml-2 text-red-600 hover:text-red-800"
-                                        title="Filter entfernen"
-                                    >
-                                        ×
-                                    </button>
-                                </span>
-                            @endforeach
-                        </div>
-                        <p class="text-xs text-red-600 font-medium">
-                            ✓ {{ count($excludeFilters) }} Exclude-Filter aktiv: 
-                            Datensätze mit diesen Begriffen werden ausgeschlossen
-                        </p>
-                    @else
-                        <p class="text-xs text-gray-500 italic">Keine Exclude-Filter gesetzt - keine Datensätze werden ausgeschlossen</p>
-                    @endif
-                </div>
+<div class="container mx-auto px-4 py-8">
+    @include('partials.navigation')
 
-                <!-- Filter-Zusammenfassung -->
-                @if(count($includeFilters) > 0 || count($excludeFilters) > 0)
-                    <div class="bg-gray-50 border border-gray-200 rounded-lg p-3 mt-4">
-                        <h4 class="text-sm font-medium text-gray-700 mb-2">📋 Filter-Zusammenfassung:</h4>
-                        <ul class="text-xs text-gray-600 space-y-1">
-                            @if(count($includeFilters) > 0)
-                                <li>✅ <strong>Include:</strong> Jobliste muss enthalten: {{ implode(' ODER ', $includeFilters) }}</li>
-                            @endif
-                            @if(count($excludeFilters) > 0)
-                                <li>❌ <strong>Exclude:</strong> Jobliste darf NICHT enthalten: {{ implode(' UND NICHT ', $excludeFilters) }}</li>
-                            @endif
-                        </ul>
-                    </div>
-                @endif
+    <div class="max-w-6xl mx-auto">
+        <!-- Success/Error Messages -->
+        @if (session()->has('success'))
+            <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+                {{ session('success') }}
             </div>
+        @endif
+
+        @if (session()->has('error'))
+            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+                {{ session('error') }}
+            </div>
+        @endif
+
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold">Knack Objects Verwaltung</h2>
+                <button 
+                    wire:click="openCreateModal"
+                    class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                >
+                    ➕ Neues Object
+                </button>
+            </div>
+
+            <!-- Objects Table -->
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Object Key</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">App ID</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Beschreibung</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Aktionen</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        @forelse($knackObjects as $knackObject)
+                            <tr class="{{ !$knackObject->active ? 'bg-gray-50 opacity-75' : '' }}">
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="font-medium text-gray-900">{{ $knackObject->name }}</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <code class="px-2 py-1 bg-gray-100 text-sm rounded">{{ $knackObject->object_key }}</code>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {{ $knackObject->app_id ?: 'Standard' }}
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-500">
+                                    {{ Str::limit($knackObject->description, 50) ?: '-' }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <button 
+                                        wire:click="toggleActive({{ $knackObject->id }})"
+                                        class="px-2 py-1 text-xs rounded-full {{ $knackObject->active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800' }}"
+                                    >
+                                        {{ $knackObject->active ? 'Aktiv' : 'Inaktiv' }}
+                                    </button>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                                    <button 
+                                        wire:click="openEditModal({{ $knackObject->id }})"
+                                        class="text-blue-600 hover:text-blue-900"
+                                    >
+                                        ✏️ Bearbeiten
+                                    </button>
+                                    <button 
+                                        wire:click="delete({{ $knackObject->id }})"
+                                        onclick="return confirm('Sind Sie sicher, dass Sie dieses Object löschen möchten?')"
+                                        class="text-red-600 hover:text-red-900"
+                                    >
+                                        🗑️ Löschen
+                                    </button>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="6" class="px-6 py-4 text-center text-gray-500">
+                                    Keine Knack Objects vorhanden. 
+                                    <button 
+                                        wire:click="openCreateModal"
+                                        class="text-blue-500 hover:underline"
+                                    >
+                                        Erstellen Sie das erste Object
+                                    </button>
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Create/Edit Modal -->
+        @if($showModal)
+            <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+                <div class="relative top-20 mx-auto p-5 border w-11/12 md:w-1/2 shadow-lg rounded-md bg-white">
+                    <div class="mt-3">
+                        <h3 class="text-lg font-medium mb-4">
+                            {{ $editingId ? 'Knack Object bearbeiten' : 'Neues Knack Object' }}
+                        </h3>
+                        
+                        <form wire:submit.prevent="save">
+                            <div class="space-y-4">
+                                <!-- Name -->
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                                        Name <span class="text-red-500">*</span>
+                                    </label>
+                                    <input 
+                                        type="text" 
+                                        wire:model="name"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="z.B. Mitarbeiter 2024"
+                                    >
+                                    @error('name') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                                </div>
+
+                                <!-- Object Key -->
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                                        Object Key <span class="text-red-500">*</span>
+                                    </label>
+                                    <input 
+                                        type="text" 
+                                        wire:model="object_key"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="z.B. object_1"
+                                    >
+                                    <p class="text-xs text-gray-500 mt-1">
+                                        Den Object Key findest du in der Knack Builder URL oder API Dokumentation
+                                    </p>
+                                    @error('object_key') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                                </div>
+
+                                <!-- App ID -->
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                                        App ID <span class="text-gray-400">(optional)</span>
+                                    </label>
+                                    <input 
+                                        type="text" 
+                                        wire:model="app_id"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Leer lassen für Standard App-ID"
+                                    >
+                                    <p class="text-xs text-gray-500 mt-1">
+                                        Falls leer, wird die Standard App-ID aus den Einstellungen verwendet
+                                    </p>
+                                    @error('app_id') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                                </div>
+
+                                <!-- Description -->
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                                        Beschreibung <span class="text-gray-400">(optional)</span>
+                                    </label>
+                                    <textarea 
+                                        wire:model="description"
+                                        rows="3"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Beschreibung dieses Knack Objects..."
+                                    ></textarea>
+                                    @error('description') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                                </div>
+
+                                <!-- Active -->
+                                <div class="flex items-center">
+                                    <input 
+                                        type="checkbox" 
+                                        wire:model="active"
+                                        class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                    >
+                                    <label class="ml-2 block text-sm text-gray-900">
+                                        Aktiv (Object im Import-Dropdown anzeigen)
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="flex justify-end space-x-2 mt-6">
+                                <button 
+                                    type="button"
+                                    wire:click="closeModal"
+                                    class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+                                >
+                                    Abbrechen
+                                </button>
+                                <button 
+                                    type="submit"
+                                    class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                                >
+                                    {{ $editingId ? 'Aktualisieren' : 'Erstellen' }}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        @endif
+    </div>
+</div>

@@ -246,6 +246,7 @@ class KnackImport extends Component
                         'group_id' => $group->id,
                         'year' => $this->year,
                         'present' => false,
+                        'remarks' => $data['jobliste'], // Jobliste als Bemerkung speichern
                         
                         // Backstage-Berechtigungen von der Gruppe übernehmen
                         'backstage_day_1' => $group->backstage_day_1 ?? false,

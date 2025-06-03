@@ -17,6 +17,7 @@ class GroupManagement extends Component
     public $group_backstage_day_3 = false, $group_backstage_day_4 = false;
     public $group_voucher_day_1 = 0.0, $group_voucher_day_2 = 0.0;
     public $group_voucher_day_3 = 0.0, $group_voucher_day_4 = 0.0;
+    public $group_can_have_guests = false; // NEU
     public $group_remarks = '';
 
     // Subgroups
@@ -66,15 +67,16 @@ class GroupManagement extends Component
         $this->group_voucher_day_2 = $this->editingGroup->voucher_day_2;
         $this->group_voucher_day_3 = $this->editingGroup->voucher_day_3;
         $this->group_voucher_day_4 = $this->editingGroup->voucher_day_4;
+        $this->group_can_have_guests = $this->editingGroup->can_have_guests; // NEU
         $this->group_remarks = $this->editingGroup->remarks;
         $this->showGroupModal = true;
     }
 
-public function testClick()
-{
-    logger('TEST BUTTON CLICKED!');
-    session()->flash('success', '🎉 TEST BUTTON FUNKTIONIERT!');
-}
+    public function testClick()
+    {
+        logger('TEST BUTTON CLICKED!');
+        session()->flash('success', '🎉 TEST BUTTON FUNKTIONIERT!');
+    }
 
     public function saveGroup()
     {
@@ -96,6 +98,7 @@ public function testClick()
             'voucher_day_2' => $this->group_voucher_day_2,
             'voucher_day_3' => $this->group_voucher_day_3,
             'voucher_day_4' => $this->group_voucher_day_4,
+            'can_have_guests' => $this->group_can_have_guests, // NEU
             'remarks' => $this->group_remarks,
             'year' => now()->year,
         ];
@@ -136,6 +139,7 @@ public function testClick()
         $this->group_voucher_day_2 = 0.0;
         $this->group_voucher_day_3 = 0.0;
         $this->group_voucher_day_4 = 0.0;
+        $this->group_can_have_guests = false; // NEU
         $this->group_remarks = '';
     }
 

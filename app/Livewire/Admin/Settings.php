@@ -26,6 +26,7 @@ class Settings extends Component
     // Voucher Settings
     public $voucher_issuance_rule = 'current_day_only';
     public $voucher_output_mode = 'all_available';
+    public $voucher_purchase_mode = 'both'; // NEU: hinzugefügt
 
     // Day Labels
     public $day_1_label = 'Tag 1';
@@ -41,16 +42,16 @@ class Settings extends Component
     {
         $currentYear = now()->year;
         $this->year = $currentYear;
-        
+
         $this->settings = SettingsModel::where('year', $currentYear)->first();
-        
+
         if ($this->settings) {
             // Bestehende Felder
             $this->day_1_date = $this->settings->day_1_date?->format('Y-m-d');
             $this->day_2_date = $this->settings->day_2_date?->format('Y-m-d');
             $this->day_3_date = $this->settings->day_3_date?->format('Y-m-d');
             $this->day_4_date = $this->settings->day_4_date?->format('Y-m-d');
-            
+
             $this->wristband_color_day_1 = $this->settings->wristband_color_day_1;
             $this->wristband_color_day_2 = $this->settings->wristband_color_day_2;
             $this->wristband_color_day_3 = $this->settings->wristband_color_day_3;
@@ -59,6 +60,7 @@ class Settings extends Component
             // Neue Felder mit Fallback-Werten
             $this->voucher_issuance_rule = $this->settings->voucher_issuance_rule ?? 'current_day_only';
             $this->voucher_output_mode = $this->settings->voucher_output_mode ?? 'all_available';
+            $this->voucher_purchase_mode = $this->settings->voucher_purchase_mode ?? 'both'; // NEU: hinzugefügt
 
             $this->day_1_label = $this->settings->day_1_label ?? 'Tag 1';
             $this->day_2_label = $this->settings->day_2_label ?? 'Tag 2';
@@ -85,6 +87,7 @@ class Settings extends Component
             'wristband_color_day_4' => 'required',
             'voucher_issuance_rule' => 'required|in:current_day_only,current_and_past,all_days',
             'voucher_output_mode' => 'required|in:single,all_available',
+            'voucher_purchase_mode' => 'required|in:stage_only,person_only,both', // NEU: Validierung hinzugefügt
         ]);
 
         SettingsModel::updateOrCreate(
@@ -100,6 +103,7 @@ class Settings extends Component
                 'wristband_color_day_4' => $this->wristband_color_day_4,
                 'voucher_issuance_rule' => $this->voucher_issuance_rule,
                 'voucher_output_mode' => $this->voucher_output_mode,
+                'voucher_purchase_mode' => $this->voucher_purchase_mode, // NEU: hinzugefügt
             ]
         );
 
@@ -144,7 +148,7 @@ class Settings extends Component
             ['field_key' => $fieldKey],
             ['label' => $label]
         );
-        
+
         // Aktualisiere lokales Array
         $this->fieldLabels[$fieldKey] = $label;
     }

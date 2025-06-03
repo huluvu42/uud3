@@ -9,12 +9,24 @@ use Carbon\Carbon;
 class Settings extends Model
 {
     protected $fillable = [
-        'day_1_date', 'day_2_date', 'day_3_date', 'day_4_date',
-        'wristband_color_day_1', 'wristband_color_day_2', 
-        'wristband_color_day_3', 'wristband_color_day_4', 'year',
-        'day_1_label', 'day_2_label', 'day_3_label', 'day_4_label',
-        'voucher_label', 'backstage_label',
-        'voucher_issuance_rule', 'voucher_output_mode'
+        'year',
+        'day_1_date',
+        'day_2_date',
+        'day_3_date',
+        'day_4_date',
+        'wristband_color_day_1',
+        'wristband_color_day_2',
+        'wristband_color_day_3',
+        'wristband_color_day_4',
+        'voucher_issuance_rule',
+        'voucher_output_mode',
+        'voucher_purchase_mode',
+        'day_1_label',
+        'day_2_label',
+        'day_3_label',
+        'day_4_label',
+        'voucher_label',
+        'backstage_label'
     ];
 
     protected $casts = [
@@ -34,14 +46,14 @@ class Settings extends Model
     public function getCurrentDay()
     {
         $today = Carbon::today();
-        
+
         for ($day = 1; $day <= 4; $day++) {
             $dayField = "day_{$day}_date";
             if ($this->{$dayField} && $today->isSameDay($this->{$dayField})) {
                 return $day;
             }
         }
-        
+
         // Fallback: ersten verfügbaren Tag zurückgeben
         return 1;
     }
@@ -64,14 +76,14 @@ class Settings extends Model
     public function isFestivalDay($date)
     {
         $checkDate = Carbon::parse($date);
-        
+
         for ($day = 1; $day <= 4; $day++) {
             $dayField = "day_{$day}_date";
             if ($this->{$dayField} && $checkDate->isSameDay($this->{$dayField})) {
                 return $day;
             }
         }
-        
+
         return false;
     }
 
@@ -92,14 +104,14 @@ class Settings extends Model
     public function getNextFestivalDay()
     {
         $today = Carbon::today();
-        
+
         for ($day = 1; $day <= 4; $day++) {
             $dayField = "day_{$day}_date";
             if ($this->{$dayField} && Carbon::parse($this->{$dayField})->gte($today)) {
                 return $day;
             }
         }
-        
+
         return 1; // Fallback
     }
 
@@ -135,5 +147,17 @@ class Settings extends Model
     public function isSingleVoucherMode()
     {
         return $this->voucher_output_mode === 'single';
+    }
+
+    public function canShowPersonPurchase()
+    {
+        $mode = $this->voucher_purchase_mode ?? 'both';
+        return in_array($mode, ['person_only', 'both']);
+    }
+
+    public function canShowStagePurchase()
+    {
+        $mode = $this->voucher_purchase_mode ?? 'both';
+        return in_array($mode, ['stage_only', 'both']);
     }
 }

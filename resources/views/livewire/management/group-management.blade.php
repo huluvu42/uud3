@@ -1,12 +1,9 @@
 <div class="container mx-auto px-4 py-8">
-    
-
-
     <!-- Navigation -->
     <div class="mb-4">
         @include('partials.navigation')
-
     </div>
+    
     <div class="max-w-7xl mx-auto">
         <!-- Flash Messages -->
         @if (session()->has('success'))
@@ -53,6 +50,7 @@
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Backstage-Tage</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Voucher/Tag</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Untergruppen</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gäste erlaubt</th> <!-- NEU -->
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Aktionen</th>
                             </tr>
                         </thead>
@@ -77,6 +75,12 @@
                                             {{ $group->subgroups->count() }}
                                         </span>
                                     </td>
+                                    <!-- NEU: Gäste erlaubt Spalte -->
+                                    <td class="px-6 py-4 text-sm">
+                                        <span class="px-2 py-1 text-xs rounded {{ $group->can_have_guests ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-500' }}">
+                                            {{ $group->can_have_guests ? 'Ja' : 'Nein' }}
+                                        </span>
+                                    </td>
                                     <td class="px-6 py-4 text-sm space-x-2">
                                         <button wire:click="editGroup({{ $group->id }})" 
                                                 onclick="setActiveTab('groups')"
@@ -93,7 +97,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="5" class="px-6 py-4 text-center text-gray-500">
+                                    <td colspan="6" class="px-6 py-4 text-center text-gray-500"> <!-- colspan von 5 auf 6 geändert -->
                                         Noch keine Gruppen angelegt. Klicken Sie auf "Neue Gruppe" um zu beginnen.
                                     </td>
                                 </tr>
@@ -273,6 +277,17 @@
                                     <input type="number" step="0.1" wire:model="group_voucher_day_4" class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
                                 </div>
                             </div>
+                        </div>
+
+                        <!-- NEU: Kann Gäste haben Checkbox -->
+                        <div class="mb-4">
+                            <label class="flex items-center p-3 border rounded-lg hover:bg-gray-50 cursor-pointer {{ $group_can_have_guests ? 'border-purple-500 bg-purple-50' : '' }}">
+                                <input type="checkbox" wire:model="group_can_have_guests" class="rounded border-gray-300 text-purple-600 shadow-sm focus:border-purple-300 focus:ring focus:ring-purple-200 focus:ring-opacity-50 mr-3">
+                                <div>
+                                    <div class="font-medium text-sm">Mitglieder können Gäste haben</div>
+                                    <div class="text-xs text-gray-500">Personen dieser Gruppe dürfen als verantwortliche Person für Gäste eingetragen werden</div>
+                                </div>
+                            </label>
                         </div>
 
                         <div class="mb-6">

@@ -13,6 +13,7 @@ class ChangeLog extends Component
     public $filterUser = '';
     public $filterTable = '';
     public $filterAction = '';
+    public $filterRecord = ''; // Neue Suche nach Datensatz-Inhalt
 
     public function resetChanges($changeId)
     {
@@ -76,6 +77,62 @@ class ChangeLog extends Component
         return $models[$tableName] ?? null;
     }
 
+    // Neue Methode: Hole zusätzliche Informationen über den geänderten Datensatz
+    public function getRecordInfo($change)
+    {
+        $modelClass = $this->getModelClass($change->table_name);
+        if (!$modelClass) return null;
+
+        $model = $modelClass::find($change->record_id);
+        if (!$model) return null;
+
+        // Je nach Tabelle verschiedene Anzeige-Logik
+        switch ($change->table_name) {
+            case 'persons':
+                return [
+                    'title' => ($model->first_name ?? '') . ' ' . ($model->last_name ?? ''),
+                    'subtitle' => $model->band ? $model->band->band_name : null,
+                    'icon' => '👤'
+                ];
+            case 'bands':
+                return [
+                    'title' => $model->band_name ?? 'Unbekannte Band',
+                    'subtitle' => $model->members ? $model->members->count() . ' Mitglieder' : null,
+                    'icon' => '🎵'
+                ];
+            case 'groups':
+                return [
+                    'title' => $model->name ?? 'Unbekannte Gruppe',
+                    'subtitle' => null,
+                    'icon' => '👥'
+                ];
+            case 'stages':
+                return [
+                    'title' => $model->name ?? 'Unbekannte Bühne',
+                    'subtitle' => null,
+                    'icon' => '🎪'
+                ];
+            case 'users':
+                return [
+                    'title' => ($model->first_name ?? '') . ' ' . ($model->last_name ?? ''),
+                    'subtitle' => $model->username ?? null,
+                    'icon' => '👤'
+                ];
+            case 'voucher_purchases':
+                return [
+                    'title' => $model->amount . ' Voucher',
+                    'subtitle' => $model->stage ? $model->stage->name : null,
+                    'icon' => '🎫'
+                ];
+            default:
+                return [
+                    'title' => 'ID: ' . $change->record_id,
+                    'subtitle' => null,
+                    'icon' => '📄'
+                ];
+        }
+    }
+
     public function updatingFilterUser()
     {
         $this->resetPage();
@@ -91,11 +148,17 @@ class ChangeLog extends Component
         $this->resetPage();
     }
 
+    public function updatingFilterRecord()
+    {
+        $this->resetPage();
+    }
+
     public function clearFilters()
     {
         $this->filterUser = '';
         $this->filterTable = '';
         $this->filterAction = '';
+        $this->filterRecord = '';
         $this->resetPage();
     }
 
@@ -121,7 +184,53 @@ class ChangeLog extends Component
             $query->where('action', $this->filterAction);
         }
 
-        $changes = $query->paginate(20);
+        // Neue Suche nach Datensatz-Inhalt
+        if ($this->filterRecord) {
+            $query->where(function($q) {
+                // Suche in verschiedenen relevanten Feldern
+                $q->where('old_value', 'ILIKE', '%' . $this->filterRecord . '%')
+                  ->orWhere('new_value', 'ILIKE', '%' . $this->filterRecord . '%')
+                  ->orWhere('field_name', 'ILIKE', '%' . $this->filterRecord . '%');
+                
+                // Suche auch in verknüpften Modellen
+                $q->orWhereExists(function($subQuery) {
+                    $subQuery->selectRaw('1')
+                        ->from('persons')
+                        ->whereColumn('persons.id', 'change_logs.record_id')
+                        ->where('change_logs.table_name', 'persons')
+                        ->where(function($personQuery) {
+                            $personQuery->where('first_name', 'ILIKE', '%' . $this->filterRecord . '%')
+                                ->orWhere('last_name', 'ILIKE', '%' . $this->filterRecord . '%');
+                        });
+                });
+                
+                $q->orWhereExists(function($subQuery) {
+                    $subQuery->selectRaw('1')
+                        ->from('bands')
+                        ->whereColumn('bands.id', 'change_logs.record_id')
+                        ->where('change_logs.table_name', 'bands')
+                        ->where('band_name', 'ILIKE', '%' . $this->filterRecord . '%');
+                });
+                
+                $q->orWhereExists(function($subQuery) {
+                    $subQuery->selectRaw('1')
+                        ->from('groups')
+                        ->whereColumn('groups.id', 'change_logs.record_id')
+                        ->where('change_logs.table_name', 'groups')
+                        ->where('name', 'ILIKE', '%' . $this->filterRecord . '%');
+                });
+                
+                $q->orWhereExists(function($subQuery) {
+                    $subQuery->selectRaw('1')
+                        ->from('stages')
+                        ->whereColumn('stages.id', 'change_logs.record_id')
+                        ->where('change_logs.table_name', 'stages')
+                        ->where('name', 'ILIKE', '%' . $this->filterRecord . '%');
+                });
+            });
+        }
+
+        $changes = $query->paginate(25);
 
         // Get available tables for filter dropdown
         $availableTables = ChangeLogModel::select('table_name')

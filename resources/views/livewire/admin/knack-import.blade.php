@@ -275,7 +275,7 @@
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Original</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Vorname</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nachname</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Jobliste</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Jobliste/Bemerkung</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                             </tr>
                         </thead>
@@ -286,7 +286,12 @@
                                     <td class="px-6 py-4 whitespace-nowrap text-sm">{{ $data['kontakt'] }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">{{ $data['first_name'] }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">{{ $data['last_name'] }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm">{{ $data['jobliste'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <span class="px-2 py-1 text-xs bg-blue-50 text-blue-800 rounded">
+                                            {{ $data['jobliste'] }}
+                                        </span>
+                                        <div class="text-xs text-gray-500 mt-1">→ wird als Bemerkung gespeichert</div>
+                                    </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm">
                                         @if($data['exists'])
                                             <span class="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800" title="{{ $data['exists_reason'] ?? 'Bereits vorhanden' }}">

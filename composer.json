@@ -10,7 +10,9 @@
         "doctrine/dbal": "^4.2",
         "laravel/framework": "^12.0",
         "laravel/tinker": "^2.10.1",
-        "livewire/livewire": "*"
+        "league/csv": "^9.23",
+        "livewire/livewire": "*",
+        "phpoffice/phpspreadsheet": "^4.3"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

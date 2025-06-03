@@ -12,6 +12,8 @@ use App\Livewire\Admin\KnackImport;
 use App\Livewire\Admin\KnackObjectsManagement;
 use App\Livewire\Management\PersonManagement;
 use App\Livewire\Admin\FieldLabel;
+use App\Livewire\Admin\DuplicateManagement;
+use App\Livewire\Admin\PersonImport;
 
 /*
 |--------------------------------------------------------------------------
@@ -66,10 +68,10 @@ Route::get('/dashboard', BackstageControl::class)
 Route::middleware(['auth'])->group(function () {
     Route::get('/profile', [AuthController::class, 'showProfile'])
         ->name('profile');
-    
+
     Route::put('/profile', [AuthController::class, 'updateProfile'])
         ->name('profile.update');
-    
+
     Route::put('/profile/password', [AuthController::class, 'changePassword'])
         ->name('password.change');
 });
@@ -78,25 +80,25 @@ Route::middleware(['auth'])->group(function () {
 
 // Management Routes - require authentication (available for all logged-in users)
 Route::middleware(['auth'])->prefix('management')->name('management.')->group(function () {
-    
+
     // Person Management
     Route::get('/persons', PersonManagement::class)
         ->name('persons');
-    
+
     Route::get('/personen', PersonManagement::class)
         ->name('personen'); // German alias
 
     // Groups, Subgroups & Stages Management
     Route::get('/groups', GroupManagement::class)
         ->name('groups');
-    
+
     Route::get('/gruppen', GroupManagement::class)
         ->name('gruppen'); // German alias
-    
+
     // Band Management
     Route::get('/bands', BandManagement::class)
         ->name('bands');
-    
+
     Route::get('/baende', BandManagement::class)
         ->name('baende'); // German alias
 });
@@ -107,99 +109,106 @@ Route::middleware(['auth'])->prefix('management')->name('management.')->group(fu
 
 // Admin Routes - require authentication and admin privileges
 Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
-    
+
     // Admin Dashboard (redirect to users for now)
     Route::get('/', function () {
         return redirect()->route('admin.users');
     })->name('dashboard');
-    
+
     // User Management
     Route::get('/users', UserManagement::class)
         ->name('users');
-    
+
     Route::get('/benutzer', UserManagement::class)
         ->name('benutzer'); // German alias
-    
+
     // System Settings
     Route::get('/settings', Settings::class)
         ->name('settings');
-    
+
     Route::get('/einstellungen', Settings::class)
         ->name('einstellungen'); // German alias
-    
+
     // Change Log / Activity Log
     Route::get('/changelog', ChangeLog::class)
         ->name('changelog');
-    
+
     Route::get('/protokoll', ChangeLog::class)
         ->name('protokoll'); // German alias
-    
+
     Route::get('/log', ChangeLog::class)
         ->name('log'); // Short alias
-    
+    Route::get('/person-import', PersonImport::class)
+        ->name('person-import');
+
+    Route::get('/personen-import', PersonImport::class)
+        ->name('personen-import'); // German alias
+
     // Knack Import
     Route::get('/knack-import', KnackImport::class)
         ->name('knack-import');
-    
+
     Route::get('/import', KnackImport::class)
         ->name('import'); // Short alias
-    
+
     Route::get('/datenimport', KnackImport::class)
         ->name('datenimport'); // German alias
 
-    // In deiner bestehenden Admin-Route-Group
     Route::get('/knack-objects', KnackObjectsManagement::class)
         ->name('knack-objects');
 
     Route::get('/knack-objekte', KnackObjectsManagement::class)
         ->name('knack-objekte'); // German alias
+
+    Route::get('/duplicates', DuplicateManagement::class)
+        ->name('duplicates');
 });
 
 // ===== API ROUTES (optional for future extensions) =====
 
 // API Routes for potential mobile app or external integrations
 Route::prefix('api')->middleware(['auth:sanctum'])->group(function () {
-    
+
     // Person lookup API
     Route::get('/persons/search', function (Illuminate\Http\Request $request) {
         $query = $request->get('q');
         if (!$query || strlen($query) < 2) {
             return response()->json(['data' => []]);
         }
-        
+
         $persons = \App\Models\Person::with(['band', 'group'])
             ->where('year', now()->year)
-            ->where(function($q) use ($query) {
+            ->where(function ($q) use ($query) {
                 $q->where('first_name', 'ILIKE', '%' . $query . '%')
-                  ->orWhere('last_name', 'ILIKE', '%' . $query . '%')
-                  ->orWhereHas('band', function($bandQuery) use ($query) {
-                      $bandQuery->where('band_name', 'ILIKE', '%' . $query . '%');
-                  });
+                    ->orWhere('last_name', 'ILIKE', '%' . $query . '%')
+                    ->orWhereHas('band', function ($bandQuery) use ($query) {
+                        $bandQuery->where('band_name', 'ILIKE', '%' . $query . '%');
+                    });
             })
             ->limit(10)
             ->get();
-        
+
         return response()->json(['data' => $persons]);
     })->name('api.persons.search');
-    
+
     // Current settings API
     Route::get('/settings', function () {
         $settings = \App\Models\Settings::current();
         return response()->json(['data' => $settings]);
     })->name('api.settings');
-    
+
     // Stages API
     Route::get('/stages', function () {
         $stages = \App\Models\Stage::where('year', now()->year)->get();
         return response()->json(['data' => $stages]);
     })->name('api.stages');
-    
+
     // Groups API
     Route::get('/groups', function () {
         $groups = \App\Models\Group::where('year', now()->year)->with('subgroups')->get();
         return response()->json(['data' => $groups]);
     })->name('api.groups');
-    
+
     // Bands API
     Route::get('/bands', function () {
         $bands = \App\Models\Band::where('year', now()->year)->with(['stage', 'members'])->get();
@@ -211,7 +220,7 @@ Route::prefix('api')->middleware(['auth:sanctum'])->group(function () {
 
 // Only available in local/testing environment
 if (app()->environment(['local', 'testing'])) {
-    
+
     // Route to quickly create test data
     Route::get('/dev/seed', function () {
         // Create test user if not exists
@@ -225,7 +234,7 @@ if (app()->environment(['local', 'testing'])) {
                 'can_reset_changes' => false,
             ]);
         }
-        
+
         // Create settings if not exists
         if (!\App\Models\Settings::where('year', now()->year)->exists()) {
             \App\Models\Settings::create([
@@ -288,16 +297,16 @@ if (app()->environment(['local', 'testing'])) {
                 'year' => now()->year,
             ]);
         }
-        
+
         return 'Test data created successfully! You can now use the system with sample data.';
     })->name('dev.seed');
-    
+
     // Route to clear all logs
     Route::get('/dev/clear-logs', function () {
         \App\Models\ChangeLog::truncate();
         return 'Change logs cleared!';
     })->name('dev.clear-logs');
-    
+
     // Route to show app info
     Route::get('/dev/info', function () {
         return [
@@ -328,10 +337,10 @@ if (app()->environment(['local', 'testing'])) {
         \App\Models\Stage::truncate();
         \App\Models\Settings::truncate();
         \App\Models\FieldLabel::truncate();
-        
+
         // Keep admin user
         \App\Models\User::where('username', '!=', 'admin')->delete();
-        
+
         return 'Database reset! Only admin user remains.';
     })->name('dev.reset');
 }

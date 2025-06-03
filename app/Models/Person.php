@@ -13,18 +13,41 @@ class Person extends Model
     protected $table = 'persons';
 
     protected $fillable = [
-        'first_name', 'last_name', 'present', 
-        'backstage_day_1', 'backstage_day_2', 'backstage_day_3', 'backstage_day_4',
-        'voucher_day_1', 'voucher_day_2', 'voucher_day_3', 'voucher_day_4',
-        'voucher_issued_day_1', 'voucher_issued_day_2', 'voucher_issued_day_3', 'voucher_issued_day_4',
-        'remarks', 'group_id', 'subgroup_id', 'band_id', 'responsible_person_id', 'year', 'knack_id',
+        'first_name',
+        'last_name',
+        'present',
+        'can_have_guests', // NEU
+        'backstage_day_1',
+        'backstage_day_2',
+        'backstage_day_3',
+        'backstage_day_4',
+        'voucher_day_1',
+        'voucher_day_2',
+        'voucher_day_3',
+        'voucher_day_4',
+        'voucher_issued_day_1',
+        'voucher_issued_day_2',
+        'voucher_issued_day_3',
+        'voucher_issued_day_4',
+        'remarks',
+        'group_id',
+        'subgroup_id',
+        'band_id',
+        'responsible_person_id',
+        'year',
+        'knack_id',
+        'is_duplicate',
+        'duplicate_reason',
+        'duplicate_marked_at',
+        'duplicate_marked_by',
     ];
-    
+
 
     protected $casts = [
         'present' => 'boolean',
+        'can_have_guests' => 'boolean',
         'backstage_day_1' => 'boolean',
-        'backstage_day_2' => 'boolean', 
+        'backstage_day_2' => 'boolean',
         'backstage_day_3' => 'boolean',
         'backstage_day_4' => 'boolean',
         'voucher_day_1' => 'decimal:1',
@@ -36,6 +59,8 @@ class Person extends Model
         'voucher_issued_day_3' => 'decimal:1',
         'voucher_issued_day_4' => 'decimal:1',
         'year' => 'integer',
+        'is_duplicate' => 'boolean', // NEU
+        'duplicate_marked_at' => 'datetime', // NEU
     ];
 
     // Beziehungen
@@ -57,6 +82,11 @@ class Person extends Model
     public function responsiblePerson()
     {
         return $this->belongsTo(Person::class, 'responsible_person_id');
+    }
+
+    public function canHaveGuests()
+    {
+        return $this->can_have_guests;
     }
 
     // Gast-Beziehung: Ein Mitglied kann einen Gast haben
@@ -99,7 +129,7 @@ class Person extends Model
     public function canHaveGuest($day)
     {
         if (!$this->band || !$this->band->stage) return false;
-        
+
         $performanceDay = $this->band->{"plays_day_$day"};
         return $performanceDay && $this->band->stage->guest_allowed;
     }
@@ -121,10 +151,10 @@ class Person extends Model
     // Gesamtanzahl verfügbarer Gutscheine
     public function getTotalAvailableVouchers()
     {
-        return $this->getAvailableVouchersForDay(1) + 
-               $this->getAvailableVouchersForDay(2) + 
-               $this->getAvailableVouchersForDay(3) + 
-               $this->getAvailableVouchersForDay(4);
+        return $this->getAvailableVouchersForDay(1) +
+            $this->getAvailableVouchersForDay(2) +
+            $this->getAvailableVouchersForDay(3) +
+            $this->getAvailableVouchersForDay(4);
     }
 
     // Vollständiger Name
@@ -162,7 +192,7 @@ class Person extends Model
     {
         $availableVouchers = $this->getAvailableVouchersForDay($day);
         $issueAmount = $amount ?? $availableVouchers;
-        
+
         if ($issueAmount > $availableVouchers) {
             throw new \Exception("Nicht genügend Gutscheine verfügbar");
         }
@@ -188,5 +218,97 @@ class Person extends Model
             'available' => $available,
             'fully_issued' => $available <= 0 && $total > 0
         ];
+    }
+
+    // Beziehung zum User der die Markierung gesetzt hat
+    public function duplicateMarkedBy()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'duplicate_marked_by');
+    }
+
+    // Scope: Nur aktive Personen (keine Duplikate)
+    public function scopeActive($query)
+    {
+        return $query->where('is_duplicate', false);
+    }
+
+    // Scope: Nur Duplikate
+    public function scopeDuplicates($query)
+    {
+        return $query->where('is_duplicate', true);
+    }
+
+    // Finde potentielle Duplikate basierend auf Name
+    public static function findPotentialDuplicates($year = null)
+    {
+        $year = $year ?? now()->year;
+
+        // Alle aktiven Personen des Jahres holen
+        $persons = self::with(['band', 'group'])
+            ->where('year', $year)
+            ->where('is_duplicate', false)
+            ->get();
+
+        // Nach Name gruppieren
+        $groups = $persons->groupBy(function ($person) {
+            return strtolower($person->first_name . '|' . $person->last_name);
+        });
+
+        // Nur Gruppen mit mehr als einer Person zurückgeben
+        $duplicateGroups = $groups->filter(function ($group) {
+            return $group->count() > 1;
+        });
+
+        // In das erwartete Format umwandeln
+        return $duplicateGroups->map(function ($persons, $key) {
+            $firstPerson = $persons->first();
+
+            return [
+                'name' => $firstPerson->first_name . ' ' . $firstPerson->last_name,
+                'count' => $persons->count(),
+                'persons' => $persons
+            ];
+        })->values(); // values() um die Schlüssel zu entfernen
+    }
+
+    // Als Duplikat markieren
+    public function markAsDuplicate($reason = 'Duplikat gefunden', $userId = null)
+    {
+        $this->update([
+            'is_duplicate' => true,
+            'duplicate_reason' => $reason,
+            'duplicate_marked_at' => now(),
+            'duplicate_marked_by' => $userId ?? auth()->id()
+        ]);
+    }
+
+    // Duplikat-Markierung entfernen
+    public function unmarkAsDuplicate()
+    {
+        $this->update([
+            'is_duplicate' => false,
+            'duplicate_reason' => null,
+            'duplicate_marked_at' => null,
+            'duplicate_marked_by' => null
+        ]);
+    }
+
+
+    // Beziehung zu Kennzeichen
+    public function vehiclePlates()
+    {
+        return $this->hasMany(VehiclePlate::class);
+    }
+
+    // Hilfsmethode: Hat diese Person Kennzeichen?
+    public function hasVehiclePlates()
+    {
+        return $this->vehiclePlates()->count() > 0;
+    }
+
+    // Hilfsmethode: Alle Kennzeichen als String
+    public function getVehiclePlatesStringAttribute()
+    {
+        return $this->vehiclePlates->pluck('license_plate')->join(', ');
     }
 }

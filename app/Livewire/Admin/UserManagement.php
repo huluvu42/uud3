@@ -8,7 +8,8 @@ use Illuminate\Support\Facades\Hash;
 
 class UserManagement extends Component
 {
-    public $users;
+    public $search = '';
+    public $searchResults = [];
     public $showModal = false;
     public $editingUser = null;
     
@@ -21,7 +22,30 @@ class UserManagement extends Component
 
     public function mount()
     {
-        $this->users = User::all();
+        // Initial load - show all users
+        $this->searchResults = User::orderBy('first_name')->orderBy('last_name')->get();
+    }
+
+    public function updatedSearch()
+    {
+        if (strlen($this->search) >= 2) {
+            $this->searchUsers();
+        } else {
+            // Show all users when search is cleared
+            $this->searchResults = User::orderBy('first_name')->orderBy('last_name')->get();
+        }
+    }
+
+    public function searchUsers()
+    {
+        $this->searchResults = User::where(function($query) {
+            $query->where('first_name', 'ILIKE', '%' . $this->search . '%')
+                  ->orWhere('last_name', 'ILIKE', '%' . $this->search . '%')
+                  ->orWhere('username', 'ILIKE', '%' . $this->search . '%');
+        })
+        ->orderBy('first_name')
+        ->orderBy('last_name')
+        ->get();
     }
 
     public function createUser()
@@ -32,7 +56,32 @@ class UserManagement extends Component
 
     public function editUser($userId)
     {
+        // Debug logging
+        \Log::info('EditUser called with ID: ' . $userId);
+        
         $this->editingUser = User::find($userId);
+        if (!$this->editingUser) {
+            session()->flash('error', 'Benutzer nicht gefunden! ID: ' . $userId);
+            return;
+        }
+
+        $this->username = $this->editingUser->username;
+        $this->first_name = $this->editingUser->first_name;
+        $this->last_name = $this->editingUser->last_name;
+        $this->is_admin = $this->editingUser->is_admin;
+        $this->can_reset_changes = $this->editingUser->can_reset_changes;
+        $this->password = '';
+        $this->showModal = true;
+    }   
+    // Alternative method using user data instead of ID
+    public function editUserByData($userData)
+    {
+        $this->editingUser = User::find($userData['id']);
+        if (!$this->editingUser) {
+            session()->flash('error', 'Benutzer nicht gefunden!');
+            return;
+        }
+
         $this->username = $this->editingUser->username;
         $this->first_name = $this->editingUser->first_name;
         $this->last_name = $this->editingUser->last_name;
@@ -65,20 +114,25 @@ class UserManagement extends Component
 
         if ($this->editingUser) {
             $this->editingUser->update($data);
+            session()->flash('success', 'Benutzer aktualisiert!');
         } else {
             User::create($data);
+            session()->flash('success', 'Benutzer erstellt!');
         }
 
-        $this->users = User::all();
+        // Refresh search results
+        $this->updatedSearch();
         $this->closeModal();
-        session()->flash('success', 'Benutzer gespeichert!');
     }
 
     public function deleteUser($userId)
     {
-        User::find($userId)->delete();
-        $this->users = User::all();
-        session()->flash('success', 'Benutzer gelöscht!');
+        $user = User::find($userId);
+        if ($user) {
+            $user->delete();
+            $this->updatedSearch(); // Refresh search results
+            session()->flash('success', 'Benutzer gelöscht!');
+        }
     }
 
     public function closeModal()

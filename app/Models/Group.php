@@ -11,7 +11,7 @@ class Group extends Model
         'backstage_day_3', 'backstage_day_4',
         'voucher_day_1', 'voucher_day_2', 
         'voucher_day_3', 'voucher_day_4', 
-        'remarks', 'year'
+        'remarks', 'can_have_guests', 'year'
     ];
 
     protected $casts = [
@@ -23,6 +23,7 @@ class Group extends Model
         'voucher_day_2' => 'decimal:1',
         'voucher_day_3' => 'decimal:1',
         'voucher_day_4' => 'decimal:1',
+        'can_have_guests' => 'boolean', 
         'year' => 'integer',
     ];
 

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class VoucherPurchase extends Model
 {
-    protected $fillable = ['amount', 'day', 'purchase_date', 'stage_id', 'user_id'];
+    protected $fillable = ['amount', 'day', 'purchase_date', 'stage_id', 'person_id',  'user_id'];
 
     protected $casts = [
         'amount' => 'decimal:1',
@@ -23,5 +23,10 @@ class VoucherPurchase extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function person()
+    {
+        return $this->belongsTo(Person::class);
     }
 }
