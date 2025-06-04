@@ -7,6 +7,7 @@ use Livewire\Component;
 use Livewire\WithFileUploads;
 use App\Models\Person;
 use App\Models\Group;
+use App\Models\VehiclePlate;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -29,10 +30,12 @@ class PersonImport extends Component
     public $lastNameColumn = null;
     public $fullNameColumn = null;
     public $remarksColumn = null;
+    public $licensePlateColumn = null; // NEU: Nummernschild-Spalte
     public $nameFormat = 'separate'; // 'separate', 'firstname_lastname', 'lastname_firstname'
 
     // Import settings
     public $selectedGroupId = null;
+    public $selectedResponsiblePersonId = null; // NEU: Verantwortliche Person
     public $selectedYear;
     public $overwriteExisting = false;
 
@@ -48,11 +51,13 @@ class PersonImport extends Component
 
     // Available groups
     public $groups = [];
+    public $responsiblePersons = []; // NEU: Verfügbare Verantwortliche
 
     public function mount()
     {
         $this->selectedYear = now()->year;
         $this->loadGroups();
+        $this->loadResponsiblePersons();
     }
 
     public function loadGroups()
@@ -62,9 +67,22 @@ class PersonImport extends Component
             ->get();
     }
 
+    public function loadResponsiblePersons()
+    {
+        // Alle Personen des aktuellen Jahres die als Verantwortliche fungieren können
+        // Das sind Personen die "can_have_guests" = true haben
+        $this->responsiblePersons = Person::where('year', $this->selectedYear)
+            ->where('is_duplicate', false)
+            ->where('can_have_guests', true)
+            ->orderBy('first_name')
+            ->orderBy('last_name')
+            ->get();
+    }
+
     public function updatedSelectedYear()
     {
         $this->loadGroups();
+        $this->loadResponsiblePersons();
         $this->resetImport();
     }
 
@@ -300,6 +318,7 @@ class PersonImport extends Component
                 }
 
                 $remarks = trim((string)($row[$this->remarksColumn] ?? ''));
+                $licensePlate = $this->licensePlateColumn ? trim((string)($row[$this->licensePlateColumn] ?? '')) : '';
 
                 // Check for existing person
                 $existingPerson = Person::where('first_name', $firstName)
@@ -386,11 +405,12 @@ class PersonImport extends Component
 
     private function createPerson($personData, $group)
     {
-        Person::create([
+        $person = Person::create([
             'first_name' => $personData['first_name'],
             'last_name' => $personData['last_name'],
             'remarks' => $personData['remarks'],
             'group_id' => $group->id,
+            'responsible_person_id' => $this->selectedResponsiblePersonId, // NEU: Verantwortliche Person
             'year' => $this->selectedYear,
             'present' => false,
             'can_have_guests' => $group->can_have_guests,
@@ -408,6 +428,16 @@ class PersonImport extends Component
             'voucher_issued_day_4' => 0,
             'is_duplicate' => false,
         ]);
+
+        // NEU: Nummernschild hinzufügen falls vorhanden
+        if (!empty($personData['license_plate'])) {
+            VehiclePlate::create([
+                'license_plate' => $personData['license_plate'],
+                'person_id' => $person->id,
+            ]);
+        }
+
+        return $person;
     }
 
     private function updatePerson($personData, $group)
@@ -417,6 +447,7 @@ class PersonImport extends Component
         $existingPerson->update([
             'remarks' => $personData['remarks'],
             'group_id' => $group->id,
+            'responsible_person_id' => $this->selectedResponsiblePersonId, // NEU: Verantwortliche Person
             'can_have_guests' => $group->can_have_guests,
             'backstage_day_1' => $group->backstage_day_1,
             'backstage_day_2' => $group->backstage_day_2,
@@ -427,6 +458,23 @@ class PersonImport extends Component
             'voucher_day_3' => $group->voucher_day_3,
             'voucher_day_4' => $group->voucher_day_4,
         ]);
+
+        // NEU: Nummernschild hinzufügen/aktualisieren falls vorhanden
+        if (!empty($personData['license_plate'])) {
+            // Prüfen ob bereits ein Nummernschild existiert
+            $existingPlate = VehiclePlate::where('person_id', $existingPerson->id)->first();
+
+            if ($existingPlate) {
+                $existingPlate->update(['license_plate' => $personData['license_plate']]);
+            } else {
+                VehiclePlate::create([
+                    'license_plate' => $personData['license_plate'],
+                    'person_id' => $existingPerson->id,
+                ]);
+            }
+        }
+
+        return $existingPerson;
     }
 
     public function resetImport()
@@ -440,7 +488,9 @@ class PersonImport extends Component
         $this->lastNameColumn = null;
         $this->fullNameColumn = null;
         $this->remarksColumn = null;
+        $this->licensePlateColumn = null; // NEU
         $this->nameFormat = 'separate';
+        $this->selectedResponsiblePersonId = null; // NEU
         $this->overwriteExisting = false;
         $this->duplicates = [];
         $this->newPersons = [];

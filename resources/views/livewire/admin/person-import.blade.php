@@ -166,6 +166,30 @@
                         Gutschein-Anzahl für alle importierten Personen.</p>
                 </div>
 
+                <!-- Responsible Person Selection (Optional) -->
+                <div class="mb-6">
+                    <label class="mb-2 block text-sm font-medium text-gray-700">
+                        Verantwortliche Person / Gastgeber (optional)
+                    </label>
+                    <select wire:model="selectedResponsiblePersonId"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">-- Keine Verantwortliche Person --</option>
+                        @foreach ($responsiblePersons as $person)
+                            <option value="{{ $person->id }}">
+                                {{ $person->first_name }} {{ $person->last_name }}
+                                @if ($person->band)
+                                    ({{ $person->band->band_name }})
+                                @endif
+                                @if ($person->group)
+                                    - {{ $person->group->name }}
+                                @endif
+                            </option>
+                        @endforeach
+                    </select>
+                    <p class="mt-1 text-xs text-gray-500">Falls die importierten Personen Gäste sind, wählen Sie hier
+                        den verantwortlichen Gastgeber aus.</p>
+                </div>
+
                 <!-- Name Format Selection -->
                 <div class="mb-6">
                     <label class="mb-2 block text-sm font-medium text-gray-700">
@@ -252,12 +276,33 @@
                             @endforeach
                         </select>
                     </div>
+
+                    <div class="md:col-span-2">
+                        <label class="mb-2 block text-sm font-medium text-gray-700">
+                            Nummernschild-Spalte (optional)
+                        </label>
+                        <select wire:model="licensePlateColumn"
+                            class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="">-- Keine Nummernschilder --</option>
+                            @foreach ($fileHeaders as $header)
+                                <option value="{{ $header }}">{{ $header }}</option>
+                            @endforeach
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500">Falls vorhanden, werden die Nummernschilder automatisch
+                            den Personen zugeordnet.</p>
+                    </div>
                 </div>
 
                 <!-- Preview Table -->
                 @if (count($previewData) > 0)
                     <div class="mb-6">
                         <h4 class="text-md mb-2 font-semibold">Vorschau der ersten Zeilen:</h4>
+
+                        <!-- Debug: Show what headers were detected -->
+                        <div class="mb-2 text-xs text-gray-500">
+                            <strong>Erkannte Spalten:</strong> {{ implode(', ', $fileHeaders) }}
+                        </div>
+
                         <div class="overflow-x-auto">
                             <table class="min-w-full divide-y divide-gray-200 border">
                                 <thead class="bg-gray-50">
@@ -386,8 +431,18 @@
                                         @endif
                                         <th class="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
                                             Gruppe</th>
+                                        @if ($selectedResponsiblePersonId)
+                                            <th
+                                                class="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
+                                                Gastgeber</th>
+                                        @endif
                                         <th class="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
                                             Bemerkungen</th>
+                                        @if ($licensePlateColumn)
+                                            <th
+                                                class="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
+                                                Nummernschild</th>
+                                        @endif
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-200 bg-white">
@@ -405,8 +460,30 @@
                                             @endif
                                             <td class="px-4 py-3 text-sm text-gray-900">{{ $person['group']->name }}
                                             </td>
+                                            @if ($selectedResponsiblePersonId)
+                                                @php
+                                                    $responsiblePerson = $responsiblePersons->find(
+                                                        $selectedResponsiblePersonId,
+                                                    );
+                                                @endphp
+                                                <td class="px-4 py-3 text-sm text-blue-600">
+                                                    {{ $responsiblePerson ? $responsiblePerson->first_name . ' ' . $responsiblePerson->last_name : '-' }}
+                                                </td>
+                                            @endif
                                             <td class="px-4 py-3 text-sm text-gray-900">
                                                 {{ $person['remarks'] ?: '-' }}</td>
+                                            @if ($licensePlateColumn)
+                                                <td class="px-4 py-3 text-sm text-gray-900">
+                                                    @if ($person['license_plate'])
+                                                        <span
+                                                            class="rounded bg-blue-50 px-2 py-1 font-mono text-xs text-blue-800">
+                                                            {{ $person['license_plate'] }}
+                                                        </span>
+                                                    @else
+                                                        -
+                                                    @endif
+                                                </td>
+                                            @endif
                                         </tr>
                                     @endforeach
                                 </tbody>
