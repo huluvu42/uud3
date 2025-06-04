@@ -3,7 +3,7 @@
 <div class="border-b bg-white shadow-sm">
     <div class="w-full px-4 sm:px-6 lg:px-8">
         <div class="flex items-center justify-between py-4">
-            <h1 class="text-2xl font-bold text-gray-800">U&D Manager</h1>
+            <h1 class="text-2xl font-bold text-gray-800">{{ config('app.name') }}</h1>
             <div class="flex items-center space-x-4">
                 <!-- Management Menu -->
                 <!-- Dashboard Link -->
