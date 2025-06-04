@@ -5,12 +5,10 @@ namespace App\Livewire\Admin;
 
 use Livewire\Component;
 use App\Models\Settings as SettingsModel;
-use App\Models\FieldLabel;
 
 class Settings extends Component
 {
     public $settings;
-    public $fieldLabels;
 
     // Settings fields
     public $day_1_date;
@@ -26,7 +24,7 @@ class Settings extends Component
     // Voucher Settings
     public $voucher_issuance_rule = 'current_day_only';
     public $voucher_output_mode = 'all_available';
-    public $voucher_purchase_mode = 'both'; // NEU: hinzugefügt
+    public $voucher_purchase_mode = 'both';
 
     // Day Labels
     public $day_1_label = 'Tag 1';
@@ -57,11 +55,12 @@ class Settings extends Component
             $this->wristband_color_day_3 = $this->settings->wristband_color_day_3;
             $this->wristband_color_day_4 = $this->settings->wristband_color_day_4;
 
-            // Neue Felder mit Fallback-Werten
+            // Voucher Settings mit Fallback-Werten
             $this->voucher_issuance_rule = $this->settings->voucher_issuance_rule ?? 'current_day_only';
             $this->voucher_output_mode = $this->settings->voucher_output_mode ?? 'all_available';
-            $this->voucher_purchase_mode = $this->settings->voucher_purchase_mode ?? 'both'; // NEU: hinzugefügt
+            $this->voucher_purchase_mode = $this->settings->voucher_purchase_mode ?? 'both';
 
+            // Day Labels mit Fallback-Werten
             $this->day_1_label = $this->settings->day_1_label ?? 'Tag 1';
             $this->day_2_label = $this->settings->day_2_label ?? 'Tag 2';
             $this->day_3_label = $this->settings->day_3_label ?? 'Tag 3';
@@ -70,8 +69,6 @@ class Settings extends Component
             $this->voucher_label = $this->settings->voucher_label ?? 'Voucher/Bons';
             $this->backstage_label = $this->settings->backstage_label ?? 'Backstage-Berechtigung';
         }
-
-        $this->fieldLabels = FieldLabel::all()->pluck('label', 'field_key')->toArray();
     }
 
     public function saveSettings()
@@ -87,7 +84,7 @@ class Settings extends Component
             'wristband_color_day_4' => 'required',
             'voucher_issuance_rule' => 'required|in:current_day_only,current_and_past,all_days',
             'voucher_output_mode' => 'required|in:single,all_available',
-            'voucher_purchase_mode' => 'required|in:stage_only,person_only,both', // NEU: Validierung hinzugefügt
+            'voucher_purchase_mode' => 'required|in:stage_only,person_only,both',
         ]);
 
         SettingsModel::updateOrCreate(
@@ -103,7 +100,7 @@ class Settings extends Component
                 'wristband_color_day_4' => $this->wristband_color_day_4,
                 'voucher_issuance_rule' => $this->voucher_issuance_rule,
                 'voucher_output_mode' => $this->voucher_output_mode,
-                'voucher_purchase_mode' => $this->voucher_purchase_mode, // NEU: hinzugefügt
+                'voucher_purchase_mode' => $this->voucher_purchase_mode,
             ]
         );
 
@@ -134,23 +131,6 @@ class Settings extends Component
         );
 
         session()->flash('success', 'Tag-Labels gespeichert!');
-    }
-
-    public function saveLabels()
-    {
-        // Field Labels werden über updateFieldLabel() gespeichert
-        session()->flash('success', 'Feld-Labels gespeichert!');
-    }
-
-    public function updateFieldLabel($fieldKey, $label)
-    {
-        FieldLabel::updateOrCreate(
-            ['field_key' => $fieldKey],
-            ['label' => $label]
-        );
-
-        // Aktualisiere lokales Array
-        $this->fieldLabels[$fieldKey] = $label;
     }
 
     public function render()

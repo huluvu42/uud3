@@ -130,7 +130,7 @@
                                 @enderror
                             </div>
 
-                            <!-- NEU: Voucher-Kaufmodus -->
+                            <!-- Voucher-Kaufmodus -->
                             <div>
                                 <label class="mb-2 block text-sm font-medium text-gray-700">Voucher-Kaufmodus</label>
                                 <select wire:model="voucher_purchase_mode"
@@ -155,43 +155,6 @@
                         <button type="submit" class="rounded bg-blue-500 px-6 py-2 text-white hover:bg-blue-600"
                             wire:loading.attr="disabled" wire:loading.class="opacity-50">
                             <span wire:loading.remove>Einstellungen speichern</span>
-                            <span wire:loading>Speichern...</span>
-                        </button>
-                    </div>
-                </form>
-            </div>
-
-            <!-- Field Labels -->
-            <div class="mb-6 rounded-lg bg-white p-6 shadow-md">
-                <h2 class="mb-4 text-lg font-semibold">Feldbezeichnungen</h2>
-                <p class="mb-4 text-sm text-gray-600">Hier können Sie die Bezeichnungen für verschiedene Felder
-                    anpassen.</p>
-
-                <form wire:submit.prevent="saveLabels">
-                    <div class="grid grid-cols-2 gap-4">
-                        @foreach ([
-        'first_name' => 'Vorname',
-        'last_name' => 'Nachname',
-        'band_name' => 'Bandname',
-        'present' => 'Anwesend',
-        'voucher' => 'Verzehrbon',
-        'remarks' => 'Bemerkung',
-        'group' => 'Gruppe',
-        'stage' => 'Bühne',
-    ] as $key => $defaultLabel)
-                            <div>
-                                <label class="mb-1 block text-sm font-medium text-gray-700">{{ $defaultLabel }}</label>
-                                <input type="text" value="{{ $fieldLabels[$key] ?? $defaultLabel }}"
-                                    wire:change="updateFieldLabel('{{ $key }}', $event.target.value)"
-                                    class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            </div>
-                        @endforeach
-                    </div>
-
-                    <div class="mt-6">
-                        <button type="submit" class="rounded bg-green-500 px-6 py-2 text-white hover:bg-green-600"
-                            wire:loading.attr="disabled" wire:loading.class="opacity-50">
-                            <span wire:loading.remove>Labels speichern</span>
                             <span wire:loading>Speichern...</span>
                         </button>
                     </div>
@@ -265,39 +228,6 @@
     </div>
 
     <script>
-        let selectedDay = 1; // Standard-Tag für Farbauswahl
-
-        // Funktion zum Setzen der ausgewählten Farbe
-        function setSelectedDayColor(hex, name) {
-            // Alle Tage durchgehen und den ersten sichtbaren Tag finden
-            for (let day = 1; day <= 4; day++) {
-                const colorInput = document.querySelector(`input[wire\\:model="wristband_color_day_${day}"][type="color"]`);
-                const textInput = document.querySelector(`input[wire\\:model="wristband_color_day_${day}"][type="text"]`);
-
-                if (colorInput && textInput) {
-                    // Wenn der Benutzer auf eine Farbe klickt, fragen welcher Tag
-                    const dayChoice = prompt(`Für welchen Tag soll die Farbe "${name}" gesetzt werden? (1-4)`, day);
-
-                    if (dayChoice && dayChoice >= 1 && dayChoice <= 4) {
-                        const targetColorInput = document.querySelector(
-                            `input[wire\\:model="wristband_color_day_${dayChoice}"][type="color"]`);
-                        const targetTextInput = document.querySelector(
-                            `input[wire\\:model="wristband_color_day_${dayChoice}"][type="text"]`);
-
-                        if (targetColorInput && targetTextInput) {
-                            targetColorInput.value = hex;
-                            targetTextInput.value = name;
-
-                            // Livewire Events triggern
-                            targetColorInput.dispatchEvent(new Event('input'));
-                            targetTextInput.dispatchEvent(new Event('input'));
-                        }
-                    }
-                    break;
-                }
-            }
-        }
-
         // Color Input Synchronisation
         document.addEventListener('DOMContentLoaded', function() {
             // Für jeden Tag die Synchronisation zwischen Color Picker und Text Input einrichten
