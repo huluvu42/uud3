@@ -12,7 +12,7 @@ class UserManagement extends Component
     public $searchResults = [];
     public $showModal = false;
     public $editingUser = null;
-    
+
     public $username = '';
     public $password = '';
     public $first_name = '';
@@ -38,14 +38,14 @@ class UserManagement extends Component
 
     public function searchUsers()
     {
-        $this->searchResults = User::where(function($query) {
+        $this->searchResults = User::where(function ($query) {
             $query->where('first_name', 'ILIKE', '%' . $this->search . '%')
-                  ->orWhere('last_name', 'ILIKE', '%' . $this->search . '%')
-                  ->orWhere('username', 'ILIKE', '%' . $this->search . '%');
+                ->orWhere('last_name', 'ILIKE', '%' . $this->search . '%')
+                ->orWhere('username', 'ILIKE', '%' . $this->search . '%');
         })
-        ->orderBy('first_name')
-        ->orderBy('last_name')
-        ->get();
+            ->orderBy('first_name')
+            ->orderBy('last_name')
+            ->get();
     }
 
     public function createUser()
@@ -54,29 +54,9 @@ class UserManagement extends Component
         $this->showModal = true;
     }
 
-    public function editUser($userId)
+    public function selectUserForEdit($userId)
     {
-        // Debug logging
-        \Log::info('EditUser called with ID: ' . $userId);
-        
         $this->editingUser = User::find($userId);
-        if (!$this->editingUser) {
-            session()->flash('error', 'Benutzer nicht gefunden! ID: ' . $userId);
-            return;
-        }
-
-        $this->username = $this->editingUser->username;
-        $this->first_name = $this->editingUser->first_name;
-        $this->last_name = $this->editingUser->last_name;
-        $this->is_admin = $this->editingUser->is_admin;
-        $this->can_reset_changes = $this->editingUser->can_reset_changes;
-        $this->password = '';
-        $this->showModal = true;
-    }   
-    // Alternative method using user data instead of ID
-    public function editUserByData($userData)
-    {
-        $this->editingUser = User::find($userData['id']);
         if (!$this->editingUser) {
             session()->flash('error', 'Benutzer nicht gefunden!');
             return;
@@ -100,6 +80,12 @@ class UserManagement extends Component
             'password' => $this->editingUser ? 'nullable' : 'required',
         ]);
 
+        // Zusätzliche Validierung: Admin-Benutzer darf nicht entadminisiert werden
+        if ($this->editingUser && $this->editingUser->isProtectedAdmin() && !$this->is_admin) {
+            session()->flash('error', 'Der Admin-Benutzer muss Administrator bleiben!');
+            return;
+        }
+
         $data = [
             'username' => $this->username,
             'first_name' => $this->first_name,
@@ -112,26 +98,54 @@ class UserManagement extends Component
             $data['password'] = Hash::make($this->password);
         }
 
-        if ($this->editingUser) {
-            $this->editingUser->update($data);
-            session()->flash('success', 'Benutzer aktualisiert!');
-        } else {
-            User::create($data);
-            session()->flash('success', 'Benutzer erstellt!');
-        }
+        try {
+            if ($this->editingUser) {
+                $this->editingUser->update($data);
+                session()->flash('success', 'Benutzer aktualisiert!');
+            } else {
+                User::create($data);
+                session()->flash('success', 'Benutzer erstellt!');
+            }
 
-        // Refresh search results
-        $this->updatedSearch();
-        $this->closeModal();
+            // Refresh search results
+            $this->updatedSearch();
+            $this->closeModal();
+        } catch (\Exception $e) {
+            session()->flash('error', 'Fehler beim Speichern: ' . $e->getMessage());
+        }
     }
 
     public function deleteUser($userId)
     {
-        $user = User::find($userId);
-        if ($user) {
+        try {
+            $user = User::find($userId);
+
+            if (!$user) {
+                session()->flash('error', 'Benutzer nicht gefunden!');
+                return;
+            }
+
+            // Prüfen ob Benutzer gelöscht werden kann
+            if (!$user->canBeDeleted()) {
+                session()->flash('error', 'Der Admin-Benutzer kann nicht gelöscht werden!');
+                return;
+            }
+
+            // Zusätzliche Sicherheit: Eigenen Account nicht löschen
+            if ($user->id === auth()->id()) {
+                session()->flash('error', 'Sie können Ihren eigenen Account nicht löschen!');
+                return;
+            }
+
             $user->delete();
             $this->updatedSearch(); // Refresh search results
-            session()->flash('success', 'Benutzer gelöscht!');
+            session()->flash('success', 'Benutzer "' . $user->username . '" wurde gelöscht!');
+        } catch (\Exception $e) {
+            session()->flash('error', 'Fehler beim Löschen: ' . $e->getMessage());
+            \Log::error('User deletion error: ' . $e->getMessage(), [
+                'user_id' => $userId,
+                'admin_user' => auth()->id()
+            ]);
         }
     }
 
