@@ -1,5 +1,5 @@
 <?php
-// app/Livewire/BackstageControl.php
+// app/Livewire/BackstageControl.php - VOLLSTÄNDIGE VERSION
 
 namespace App\Livewire;
 
@@ -16,8 +16,11 @@ use Illuminate\Support\Facades\DB;
 class BackstageControl extends Component
 {
     public $search = '';
+    public $bandSearch = ''; // NEU: Separate Band-Suche
     public $searchResults = [];
+    public $bandSearchResults = []; // NEU: Band-Suchergebnisse
     public $selectedPerson = null;
+    public $selectedBandFromSearch = null; // NEU: Ausgewählte Band aus Suche
     public $bandMembers = [];
     public $currentDay = 1;
     public $selectedStage = null;
@@ -27,14 +30,14 @@ class BackstageControl extends Component
     public $selectedBand = null;
     public $sortBy = 'first_name';
     public $sortDirection = 'asc';
-    public $showGuestsModal = false; // NEU für Gäste-Modal
-    public $selectedPersonForGuests = null; // NEU für Gäste-Modal
+    public $showGuestsModal = false;
+    public $selectedPersonForGuests = null;
 
     // Voucher purchase
     public $voucherAmount = 0.5;
     public $purchaseStageId = null;
     public $showStageModal = false;
-    public $selectedPersonForPurchase = null; // NEU: Property für Person-basierten Kauf
+    public $selectedPersonForPurchase = null;
 
     // Filter
     public $stageFilter = 'all';
@@ -47,24 +50,76 @@ class BackstageControl extends Component
         $this->settings = Settings::current();
         $this->currentDay = $this->getCurrentDay();
         $this->showBandList = false;
-        // Keine Session-Logik mehr nötig
     }
 
-    private function performSearch()
+    // NEU: Band-Status für aktuellen Tag berechnen
+    public function getBandStatusForToday($band)
     {
-        $query = Person::with(['band', 'group', 'subgroup', 'responsiblePerson', 'responsibleFor', 'vehiclePlates']) // NEU: Gast-Beziehungen
+        if (!$this->settings) {
+            return ['status' => 'unknown', 'class' => 'bg-gray-100 text-gray-700', 'text' => 'Unbekannt'];
+        }
+
+        $currentDay = $this->currentDay;
+
+        // Spielt die Band heute überhaupt?
+        if (!$band->{"plays_day_$currentDay"}) {
+            return ['status' => 'not_today', 'class' => 'bg-gray-100 text-gray-700', 'text' => 'Spielt nicht heute'];
+        }
+
+        // Auftrittszeit für heute holen
+        $performanceTime = $band->getFormattedPerformanceTimeForDay($currentDay);
+        if (!$performanceTime) {
+            return ['status' => 'no_time', 'class' => 'bg-yellow-100 text-yellow-700', 'text' => 'Keine Auftrittszeit'];
+        }
+
+        // Späteste Ankunftszeit berechnen
+        $arrivalMinutes = $this->settings->getLatestArrivalTimeMinutes();
+        try {
+            $performanceDateTime = \Carbon\Carbon::createFromFormat('H:i', $performanceTime);
+            $latestArrivalTime = $performanceDateTime->subMinutes($arrivalMinutes);
+            $now = \Carbon\Carbon::now();
+
+            // Sind alle Mitglieder anwesend?
+            $allPresent = $band->all_present;
+
+            if ($allPresent) {
+                return ['status' => 'ready', 'class' => 'bg-green-100 text-green-700 border-green-300', 'text' => '✓ Alle da'];
+            }
+
+            // Ankunftszeit schon überschritten?
+            if ($now->gt($latestArrivalTime)) {
+                return ['status' => 'late', 'class' => 'bg-red-100 text-red-700 border-red-300', 'text' => '⚠ Zu spät!'];
+            }
+
+            // Noch Zeit, aber nicht alle da
+            $timeLeft = $now->diffInMinutes($latestArrivalTime);
+            if ($timeLeft <= 15) {
+                return ['status' => 'warning', 'class' => 'bg-orange-100 text-orange-700 border-orange-300', 'text' => "⏰ {$timeLeft}min"];
+            }
+
+            return ['status' => 'waiting', 'class' => 'bg-blue-100 text-blue-700', 'text' => 'Warten...'];
+        } catch (\Exception $e) {
+            return ['status' => 'error', 'class' => 'bg-yellow-100 text-yellow-700', 'text' => 'Zeitfehler'];
+        }
+    }
+
+    // PERSONEN-SUCHE (wie bisher)
+    private function performPersonSearch()
+    {
+        $searchTerm = $this->search;
+
+        $query = Person::with(['band', 'group', 'subgroup', 'responsiblePerson', 'responsibleFor', 'vehiclePlates'])
             ->where('year', now()->year)
             ->where('is_duplicate', false);
 
-        $query->where(function ($q) {
-            $q->where('first_name', 'ILIKE', '%' . $this->search . '%')
-                ->orWhere('last_name', 'ILIKE', '%' . $this->search . '%')
-                ->orWhereHas('band', function ($bandQuery) {
-                    $bandQuery->where('band_name', 'ILIKE', '%' . $this->search . '%');
+        $query->where(function ($q) use ($searchTerm) {
+            $q->where('first_name', 'ILIKE', '%' . $searchTerm . '%')
+                ->orWhere('last_name', 'ILIKE', '%' . $searchTerm . '%')
+                ->orWhereHas('band', function ($bandQuery) use ($searchTerm) {
+                    $bandQuery->where('band_name', 'ILIKE', '%' . $searchTerm . '%');
                 })
-                // in Kennzeichen suchen
-                ->orWhereHas('vehiclePlates', function ($plateQuery) {
-                    $plateQuery->where('license_plate', 'ILIKE', '%' . $this->search . '%');
+                ->orWhereHas('vehiclePlates', function ($plateQuery) use ($searchTerm) {
+                    $plateQuery->where('license_plate', 'ILIKE', '%' . $searchTerm . '%');
                 });
         });
 
@@ -75,22 +130,150 @@ class BackstageControl extends Component
             ->get();
     }
 
-    public function updatedSearch()
+    // NEU: BAND-SUCHE
+    private function performBandSearch()
     {
-        if (strlen($this->search) >= 2) {
-            $this->searchPerson();
-        } else {
-            $this->searchResults = [];
+        $searchTerm = $this->bandSearch;
+
+        return Band::with(['members', 'stage'])
+            ->where('year', now()->year)
+            ->where('band_name', 'ILIKE', '%' . $searchTerm . '%')
+            ->orderBy('band_name', 'asc')
+            ->limit(10)
+            ->get();
+    }
+
+    // NEU: Band-Suche Update Handler
+    public function updatedBandSearch()
+    {
+        if (strlen($this->bandSearch) >= 2) {
+            $this->bandSearchResults = $this->performBandSearch();
+
+            // Person-bezogene Daten zurücksetzen aber Band-Auswahl behalten
             $this->selectedPerson = null;
-            $this->bandMembers = [];
+            $this->searchResults = [];
+            // $this->selectedBandFromSearch = null; // ← Nur beim ersten Suchen
+        } else {
+            $this->bandSearchResults = [];
+            // Nur zurücksetzen wenn keine Band ausgewählt ist
+            if (!$this->selectedBandFromSearch) {
+                $this->bandMembers = [];
+            }
         }
     }
 
-    public function searchPerson()
+    // Personen-Suche Update Handler (angepasst)
+    public function updatedSearch()
     {
-        $this->searchResults = $this->performSearch();
+        if (strlen($this->search) >= 2) {
+            $this->searchResults = $this->performPersonSearch();
+
+            // Band-bezogene Suchdaten zurücksetzen, aber NICHT die ausgewählte Band
+            $this->bandSearchResults = [];
+            // $this->selectedBandFromSearch = null; // ← NICHT zurücksetzen!
+        } else {
+            $this->searchResults = [];
+            $this->selectedPerson = null;
+            // Band-Mitglieder nur zurücksetzen wenn keine Band aus Suche ausgewählt ist
+            if (!$this->selectedBandFromSearch) {
+                $this->bandMembers = [];
+            }
+        }
     }
 
+    // Legacy: Für Kompatibilität
+    public function searchPerson()
+    {
+        $this->searchResults = $this->performPersonSearch();
+    }
+
+    // NEU: Band aus Suche auswählen
+    public function selectBandFromSearch($bandId)
+    {
+        $this->selectedBandFromSearch = Band::with(['members', 'stage'])->find($bandId);
+
+        if ($this->selectedBandFromSearch) {
+            $this->loadBandMembersFromSearch();
+        }
+
+        // Andere Suchergebnisse zurücksetzen
+        $this->bandSearchResults = [];
+        $this->searchResults = [];
+        $this->selectedPerson = null;
+        $this->showBandList = false;
+    }
+
+    // NEU: Band-Mitglieder laden für ausgewählte Band aus Suche
+    public function loadBandMembersFromSearch()
+    {
+        if (!$this->selectedBandFromSearch) return;
+
+        // Frische Daten der Band laden (für aktualisierte all_present Status)
+        $this->selectedBandFromSearch = Band::with(['members', 'stage'])->find($this->selectedBandFromSearch->id);
+
+        if (!$this->selectedBandFromSearch) {
+            $this->bandMembers = [];
+            return;
+        }
+
+        $this->bandMembers = $this->selectedBandFromSearch->members()
+            ->with('vehiclePlates') // NEU: Kennzeichen laden
+            ->where('year', now()->year)
+            ->where('is_duplicate', false)
+            ->orderBy($this->sortBy, $this->sortDirection)
+            ->get();
+    }
+
+    // NEU: Zur Band der Person wechseln
+    public function goToBand($personId)
+    {
+        $person = Person::with('band')->find($personId);
+
+        if (!$person || !$person->band) {
+            session()->flash('error', 'Diese Person ist keiner Band zugeordnet.');
+            return;
+        }
+
+        // Band aus Suche auswählen
+        $this->selectedBandFromSearch = Band::with(['members', 'stage'])->find($person->band->id);
+
+        if ($this->selectedBandFromSearch) {
+            $this->loadBandMembersFromSearch();
+
+            // Suchfelder und andere Auswahlen zurücksetzen
+            $this->searchResults = [];
+            $this->bandSearchResults = [];
+            $this->selectedPerson = null;
+            $this->showBandList = false;
+
+            session()->flash('success', 'Zur Band "' . $this->selectedBandFromSearch->band_name . '" gewechselt.');
+        }
+    }
+
+    // NEU: Alle Suchfelder zurücksetzen
+    public function clearAllSearches()
+    {
+        $this->search = '';
+        $this->bandSearch = '';
+        $this->searchResults = [];
+        $this->bandSearchResults = [];
+        $this->selectedPerson = null;
+        $this->selectedBandFromSearch = null;
+        $this->bandMembers = [];
+        $this->showBandList = false;
+
+        $this->dispatch('search-cleared');
+    }
+
+    // NEU: Band-Auswahl explizit zurücksetzen
+    public function clearBandSelection()
+    {
+        $this->selectedBandFromSearch = null;
+        $this->bandMembers = [];
+        $this->selectedPerson = null;
+    }
+
+    // Bestehende selectPerson Methode (angepasst)
     public function selectPerson($personId)
     {
         $this->selectedPerson = Person::with(['band.members', 'group', 'subgroup', 'responsiblePerson', 'responsibleFor', 'vehiclePlates'])
@@ -102,19 +285,27 @@ class BackstageControl extends Component
             $this->bandMembers = [];
         }
 
+        // Suchfelder zurücksetzen
         $this->searchResults = [];
+        $this->bandSearchResults = [];
+        $this->selectedBandFromSearch = null;
         $this->showBandList = false;
     }
 
+    // Bestehende loadBandMembers Methode
     public function loadBandMembers()
     {
         if (!$this->selectedPerson || !$this->selectedPerson->band) return;
 
         $this->bandMembers = $this->selectedPerson->band->members()
+            ->with('vehiclePlates') // NEU: Kennzeichen laden
+            ->where('year', now()->year)
+            ->where('is_duplicate', false)
             ->orderBy($this->sortBy, $this->sortDirection)
             ->get();
     }
 
+    // Angepasste togglePresence Methode
     public function togglePresence($personId)
     {
         $person = Person::find($personId);
@@ -124,12 +315,50 @@ class BackstageControl extends Component
         $person->present = !$person->present;
         $person->save();
 
+        // Band's all_present Status aktualisieren falls Person in einer Band ist
+        if ($person->band) {
+            $person->band->updateAllPresentStatus();
+        }
+
         $this->forceRefresh();
 
         session()->flash('success', $person->full_name . ' ist jetzt ' . ($person->present ? 'anwesend' : 'abwesend'));
     }
 
-    // NEU: Gäste-Modal Methoden für BackstageControl
+    // Angepasste forceRefresh Methode
+    private function forceRefresh()
+    {
+        // Merke dir die aktuell ausgewählte Band aus der Suche
+        $keepSelectedBandFromSearch = $this->selectedBandFromSearch;
+
+        $this->searchResults = [];
+        $this->bandSearchResults = [];
+        $this->selectedPerson = null;
+        // $this->selectedBandFromSearch = null; // ← NICHT zurücksetzen!
+        $this->selectedBand = null;
+
+        // Erneut suchen falls Suchbegriffe vorhanden
+        if ($this->search && strlen($this->search) >= 2) {
+            usleep(10000);
+            $this->searchResults = $this->performPersonSearch();
+        }
+
+        if ($this->bandSearch && strlen($this->bandSearch) >= 2) {
+            usleep(10000);
+            $this->bandSearchResults = $this->performBandSearch();
+        }
+
+        // Wenn eine Band aus der Suche ausgewählt war, Mitglieder neu laden
+        if ($keepSelectedBandFromSearch) {
+            $this->selectedBandFromSearch = $keepSelectedBandFromSearch;
+            $this->loadBandMembersFromSearch();
+        } else {
+            $this->bandMembers = [];
+        }
+
+        $this->dispatch('refresh-component');
+    }
+
     public function showGuests($personId)
     {
         $this->selectedPersonForGuests = Person::with('responsibleFor')->findOrFail($personId);
@@ -142,18 +371,13 @@ class BackstageControl extends Component
         $this->selectedPersonForGuests = null;
     }
 
-    // NEU: Person-basierte Voucher-Käufe
     public function purchasePersonVoucher($personId, $amount)
     {
-        // Speichere Person und Amount für späteren Kauf
         $this->selectedPersonForPurchase = Person::findOrFail($personId);
         $this->voucherAmount = $amount;
-
-        // Verwende die gleiche Logik wie beim normalen Kauf
         $this->initiatePurchase($amount);
     }
 
-    // NEU: Hilfsmethode für den eigentlichen Kauf
     private function executePurchase($personId = null)
     {
         if (!$this->purchaseStageId) {
@@ -169,7 +393,6 @@ class BackstageControl extends Component
             $voucher->stage_id = $this->purchaseStageId;
             $voucher->user_id = auth()->id();
 
-            // Wenn Person-ID übergeben, diese hinzufügen
             if ($personId) {
                 $voucher->person_id = $personId;
                 $person = Person::find($personId);
@@ -192,31 +415,25 @@ class BackstageControl extends Component
         }
     }
 
-    // Prüfe ob Person-Käufe erlaubt sind
     public function canShowPersonPurchase()
     {
         if (!$this->settings) return false;
-
         $mode = $this->settings->voucher_purchase_mode ?? 'both';
         return in_array($mode, ['person_only', 'both']);
     }
 
-    // Prüfe ob Bühnen-Käufe erlaubt sind
     public function canShowStagePurchase()
     {
-        if (!$this->settings) return true; // Default: zeigen
-
+        if (!$this->settings) return true;
         $mode = $this->settings->voucher_purchase_mode ?? 'both';
         return in_array($mode, ['stage_only', 'both']);
     }
 
-    // VOLLSTÄNDIGE VERSION
     public function issueVouchers($personId, $day)
     {
         $person = Person::find($personId);
         if (!$person) return;
 
-        // Prüfe Voucher-Ausgabe-Regel
         if (!$this->settings || !$this->settings->canIssueVouchersForDay($day, $this->currentDay)) {
             $dayLabel = $this->settings ? $this->settings->getDayLabel($day) : "Tag $day";
             session()->flash('error', "Voucher für $dayLabel können aktuell nicht ausgegeben werden!");
@@ -229,23 +446,19 @@ class BackstageControl extends Component
             return;
         }
 
-        // Bestimme wie viele Voucher ausgegeben werden sollen
-        $vouchersToIssue = 1; // Standard: einzeln
+        $vouchersToIssue = 1;
         if ($this->settings && !$this->settings->isSingleVoucherMode()) {
-            $vouchersToIssue = $availableVouchers; // Alle verfügbaren
+            $vouchersToIssue = $availableVouchers;
         }
 
-        // Berechtigung reduzieren (vom ursprünglichen Tag)
         $person->{"voucher_day_$day"} -= $vouchersToIssue;
 
-        // Ausgabe für HEUTE erhöhen (am aktuellen Tag!)
         $currentIssued = $person->{"voucher_issued_day_{$this->currentDay}"};
         $person->{"voucher_issued_day_{$this->currentDay}"} = $currentIssued + $vouchersToIssue;
 
         $success = $person->save();
 
         if ($success) {
-            // AGGRESSIVE AKTUALISIERUNG - komplette Neuberechnung
             $this->forceRefresh();
 
             $voucherLabel = $this->settings ? $this->settings->getVoucherLabel() : 'Voucher';
@@ -262,7 +475,6 @@ class BackstageControl extends Component
         }
     }
 
-    // Initiate Purchase verbessern
     public function initiatePurchase($amount)
     {
         $this->voucherAmount = $amount;
@@ -270,10 +482,8 @@ class BackstageControl extends Component
         if (!$this->purchaseStageId) {
             $this->showStageModal = true;
         } else {
-            // Prüfen ob die aktuell ausgewählte Bühne noch existiert
             $selectedStage = $this->stages->find($this->purchaseStageId);
             if (!$selectedStage) {
-                // Ungültige Bühne - Modal anzeigen
                 $this->purchaseStageId = null;
                 $this->showStageModal = true;
             } else {
@@ -282,7 +492,6 @@ class BackstageControl extends Component
         }
     }
 
-    // Modifizierte purchaseVouchers Methode
     public function purchaseVouchers()
     {
         if (!$this->purchaseStageId) {
@@ -290,14 +499,12 @@ class BackstageControl extends Component
             return;
         }
 
-        // Prüfe ob es ein Person-basierter Kauf ist
         if ($this->selectedPersonForPurchase) {
             $this->executePurchase($this->selectedPersonForPurchase->id);
         } else {
             $this->executePurchase();
         }
 
-        // Component neu laden für die Anzeige der Verkaufssumme
         $this->dispatch('refresh-component');
     }
 
@@ -305,18 +512,15 @@ class BackstageControl extends Component
     {
         $this->purchaseStageId = null;
         $this->showStageModal = false;
-        $this->selectedPersonForPurchase = null; // Reset auch hier
-        // Frontend über Reset informieren
+        $this->selectedPersonForPurchase = null;
         $this->dispatch('stage-selected', null);
     }
 
-    // 3. Modal schließen ohne Bühne zu behalten
     public function cancelStageSelection()
     {
         $this->purchaseStageId = null;
         $this->showStageModal = false;
-        $this->selectedPersonForPurchase = null; // Reset auch hier
-        // Session-Wert NICHT löschen beim Abbrechen
+        $this->selectedPersonForPurchase = null;
     }
 
     public function getSoldVouchersForStage($stageId, $day = null)
@@ -330,7 +534,6 @@ class BackstageControl extends Component
             ->sum('amount');
     }
 
-    // 5. Alle verkauften Bons heute abrufen (für die Anzeige)
     public function getTodaysSoldVouchers()
     {
         $soldVouchers = [];
@@ -342,32 +545,17 @@ class BackstageControl extends Component
 
     public function updatedPurchaseStageId($value)
     {
-        // Event an Frontend senden
         $this->dispatch('stage-selected', $value);
     }
 
-    // Debug-Methode hinzufügen (temporär zum Testen)
-    public function debugSession()
-    {
-        $sessionValue = session('backstage_purchase_stage_id');
-        $currentValue = $this->purchaseStageId;
-
-        session()->flash('success', "Session: $sessionValue, Current: $currentValue, Stages count: " . $this->stages->count());
-    }
-
-    /**
-     * Determine the wristband color for a person based on their backstage access
-     */
     public function getWristbandColorForPerson($person)
     {
         if (!$this->settings) return null;
 
-        // First check if person has backstage access for the current day
         if (!$person->{"backstage_day_{$this->currentDay}"}) {
-            return null; // No wristband if no access for current day
+            return null;
         }
 
-        // Check if person has backstage access for all remaining days (from current day to day 4)
         $hasAllRemainingDays = true;
         for ($day = $this->currentDay; $day <= 4; $day++) {
             if (!$person->{"backstage_day_$day"}) {
@@ -376,18 +564,13 @@ class BackstageControl extends Component
             }
         }
 
-        // If they have all remaining days, return day 4 color
         if ($hasAllRemainingDays) {
             return $this->settings->getColorForDay(4);
         }
 
-        // Otherwise, return the color for the current day
         return $this->settings->getColorForDay($this->currentDay);
     }
 
-    /**
-     * Check if person has any backstage access
-     */
     public function hasAnyBackstageAccess($person)
     {
         for ($day = 1; $day <= 4; $day++) {
@@ -403,18 +586,21 @@ class BackstageControl extends Component
         $this->showBandList = true;
         $this->selectedBand = null;
         $this->selectedPerson = null;
+        $this->selectedBandFromSearch = null;
         $this->bandMembers = [];
         $this->searchResults = [];
+        $this->bandSearchResults = [];
         $this->search = '';
+        $this->bandSearch = '';
 
         $this->dispatch('search-cleared');
     }
 
     public function selectBand($bandId)
     {
-        $this->selectedBand = Band::with(['members', 'stage'])
-            ->find($bandId);
+        $this->selectedBand = Band::with(['members', 'stage'])->find($bandId);
         $this->selectedPerson = null;
+        $this->selectedBandFromSearch = null;
         $this->bandMembers = [];
     }
 
@@ -428,25 +614,9 @@ class BackstageControl extends Component
         }
 
         $this->loadBandMembers();
+        $this->loadBandMembersFromSearch();
     }
 
-    // Aggressive Refresh
-    private function forceRefresh()
-    {
-        $this->searchResults = [];
-        $this->selectedPerson = null;
-        $this->bandMembers = [];
-        $this->selectedBand = null;
-
-        if ($this->search && strlen($this->search) >= 2) {
-            usleep(10000); // 10ms
-            $this->searchResults = $this->performSearch();
-        }
-
-        $this->dispatch('refresh-component');
-    }
-
-    // Nächsten verfügbaren Tag finden
     public function getNextAvailableVoucherDay($person)
     {
         $freshPerson = Person::find($person->id);
@@ -464,7 +634,6 @@ class BackstageControl extends Component
         return null;
     }
 
-    // Erlaubte Tage für Voucher-Ausgabe
     public function getAllowedVoucherDays()
     {
         if (!$this->settings) return [$this->currentDay];
