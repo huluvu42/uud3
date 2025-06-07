@@ -14,6 +14,7 @@ use App\Livewire\Management\PersonManagement;
 use App\Livewire\Admin\FieldLabel;
 use App\Livewire\Admin\DuplicateManagement;
 use App\Livewire\Admin\PersonImport;
+use App\Livewire\Admin\BandImport;
 
 /*
 |--------------------------------------------------------------------------
@@ -136,8 +137,15 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('/protokoll', ChangeLog::class)
         ->name('protokoll'); // German alias
 
+    // Band Import Route    
+    Route::get('/band-import', BandImport::class)
+        ->name('band-import');
+
+    Route::get('/band-member-import', \App\Livewire\Admin\BandMemberImport::class)->name('band-member-import');
+
     Route::get('/log', ChangeLog::class)
         ->name('log'); // Short alias
+
     Route::get('/person-import', PersonImport::class)
         ->name('person-import');
 

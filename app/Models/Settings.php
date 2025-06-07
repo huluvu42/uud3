@@ -26,7 +26,8 @@ class Settings extends Model
         'day_3_label',
         'day_4_label',
         'voucher_label',
-        'backstage_label'
+        'backstage_label',
+        'latest_arrival_time_minutes'
     ];
 
     protected $casts = [
@@ -35,6 +36,7 @@ class Settings extends Model
         'day_3_date' => 'date',
         'day_4_date' => 'date',
         'year' => 'integer',
+        'latest_arrival_time_minutes' => 'integer',
     ];
 
     public static function current()
@@ -159,5 +161,28 @@ class Settings extends Model
     {
         $mode = $this->voucher_purchase_mode ?? 'both';
         return in_array($mode, ['stage_only', 'both']);
+    }
+
+    // Neue Methode für Ankunftszeit
+    public function getLatestArrivalTimeMinutes()
+    {
+        return $this->latest_arrival_time_minutes ?? 60;
+    }
+
+    public function getFormattedLatestArrivalTime()
+    {
+        $minutes = $this->getLatestArrivalTimeMinutes();
+
+        if ($minutes >= 60) {
+            $hours = intval($minutes / 60);
+            $remainingMinutes = $minutes % 60;
+
+            if ($remainingMinutes > 0) {
+                return $hours . 'h ' . $remainingMinutes . 'min';
+            }
+            return $hours . 'h';
+        }
+
+        return $minutes . 'min';
     }
 }

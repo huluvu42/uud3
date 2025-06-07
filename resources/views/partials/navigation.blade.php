@@ -46,13 +46,18 @@
                                         class="{{ request()->routeIs('management.groups') ? 'bg-blue-50 text-blue-700' : '' }} block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                         📁 Gruppen & Bühnen
                                     </a>
-                                    <a href="{{ route('admin.users') }}"
-                                        class="{{ request()->routeIs('admin.users') ? 'bg-blue-50 text-blue-700' : '' }} block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                        👥 Benutzer verwalten
-                                    </a>
+
                                     <a href="{{ route('admin.settings') }}"
                                         class="{{ request()->routeIs('admin.settings') ? 'bg-blue-50 text-blue-700' : '' }} block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                         ⚙️ Einstellungen
+                                    </a>
+                                    <a href="{{ route('admin.band-import') }}"
+                                        class="{{ request()->routeIs('admin.band-import') ? 'bg-blue-50 text-blue-700' : '' }} block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                        🎵 Band Import
+                                    </a>
+                                    <a href="{{ route('admin.band-member-import') }}"
+                                        class="{{ request()->routeIs('admin.band-member-import') ? 'bg-blue-50 text-blue-700' : '' }} block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                        👥 Bandmitglieder Import
                                     </a>
                                     <a href="{{ route('admin.person-import') }}"
                                         class="{{ request()->routeIs(['admin.person-import', 'admin.personen-import']) ? 'bg-blue-50 text-blue-700' : '' }} block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
@@ -69,6 +74,10 @@
                                     <a href="{{ route('admin.duplicates') }}"
                                         class="{{ request()->routeIs(['admin.duplicates', 'admin.duplikate']) ? 'bg-blue-50 text-blue-700' : '' }} block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                         👥 Duplikat-Verwaltung
+                                    </a>
+                                    <a href="{{ route('admin.users') }}"
+                                        class="{{ request()->routeIs('admin.users') ? 'bg-blue-50 text-blue-700' : '' }} block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                        👥 Benutzer verwalten
                                     </a>
                                     <a href="{{ route('admin.changelog') }}"
                                         class="{{ request()->routeIs('admin.changelog') ? 'bg-blue-50 text-blue-700' : '' }} block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">

@@ -55,6 +55,25 @@
                                         <span class="text-sm text-red-500">{{ $message }}</span>
                                     @enderror
                                 </div>
+
+                                <!-- Neue Ankunftszeit -->
+                                <div class="mt-4 border-t border-gray-200 pt-4">
+                                    <label class="mb-1 block text-sm font-medium text-gray-700">Späteste Ankunftszeit
+                                        (vor Auftritt)</label>
+                                    <div class="flex items-center space-x-3">
+                                        <input type="number" wire:model="latest_arrival_time_minutes" min="1"
+                                            max="480" step="1"
+                                            class="w-24 rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                        <span class="text-sm text-gray-600">Minuten</span>
+                                        <span class="text-sm text-gray-500">({{ $this->formattedArrivalTime }})</span>
+                                    </div>
+                                    <p class="mt-1 text-xs text-gray-500">
+                                        Bands müssen mindestens X Minuten vor ihrem Auftritt da sein
+                                    </p>
+                                    @error('latest_arrival_time_minutes')
+                                        <span class="text-sm text-red-500">{{ $message }}</span>
+                                    @enderror
+                                </div>
                             </div>
                         </div>
 
@@ -256,3 +275,4 @@
             }
         });
     </script>
+</div>

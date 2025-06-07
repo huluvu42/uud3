@@ -20,6 +20,7 @@ class Settings extends Component
     public $wristband_color_day_3;
     public $wristband_color_day_4;
     public $year;
+    public $latest_arrival_time_minutes = 60;
 
     // Voucher Settings
     public $voucher_issuance_rule = 'current_day_only';
@@ -55,6 +56,9 @@ class Settings extends Component
             $this->wristband_color_day_3 = $this->settings->wristband_color_day_3;
             $this->wristband_color_day_4 = $this->settings->wristband_color_day_4;
 
+            // Neue Ankunftszeit
+            $this->latest_arrival_time_minutes = $this->settings->latest_arrival_time_minutes ?? 60;
+
             // Voucher Settings mit Fallback-Werten
             $this->voucher_issuance_rule = $this->settings->voucher_issuance_rule ?? 'current_day_only';
             $this->voucher_output_mode = $this->settings->voucher_output_mode ?? 'all_available';
@@ -82,6 +86,7 @@ class Settings extends Component
             'wristband_color_day_2' => 'required',
             'wristband_color_day_3' => 'required',
             'wristband_color_day_4' => 'required',
+            'latest_arrival_time_minutes' => 'required|integer|min:1|max:480',
             'voucher_issuance_rule' => 'required|in:current_day_only,current_and_past,all_days',
             'voucher_output_mode' => 'required|in:single,all_available',
             'voucher_purchase_mode' => 'required|in:stage_only,person_only,both',
@@ -98,6 +103,7 @@ class Settings extends Component
                 'wristband_color_day_2' => $this->wristband_color_day_2,
                 'wristband_color_day_3' => $this->wristband_color_day_3,
                 'wristband_color_day_4' => $this->wristband_color_day_4,
+                'latest_arrival_time_minutes' => $this->latest_arrival_time_minutes,
                 'voucher_issuance_rule' => $this->voucher_issuance_rule,
                 'voucher_output_mode' => $this->voucher_output_mode,
                 'voucher_purchase_mode' => $this->voucher_purchase_mode,
@@ -131,6 +137,24 @@ class Settings extends Component
         );
 
         session()->flash('success', 'Tag-Labels gespeichert!');
+    }
+
+    // Computed property für formatierte Anzeige
+    public function getFormattedArrivalTimeProperty()
+    {
+        $minutes = $this->latest_arrival_time_minutes;
+
+        if ($minutes >= 60) {
+            $hours = intval($minutes / 60);
+            $remainingMinutes = $minutes % 60;
+
+            if ($remainingMinutes > 0) {
+                return $hours . 'h ' . $remainingMinutes . 'min';
+            }
+            return $hours . 'h';
+        }
+
+        return $minutes . 'min';
     }
 
     public function render()
