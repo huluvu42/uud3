@@ -215,18 +215,23 @@
                                 <!-- Person Info -->
                                 <div class="xl:col-span-1">
                                     <div wire:click="selectPerson({{ $person->id }})"
-                                        class="mb-1 flex cursor-pointer flex-wrap items-center gap-1 text-lg font-medium hover:text-blue-600">
-                                        <span>{{ $person->first_name }} {{ $person->last_name }}</span>
+                                        class="mb-1 cursor-pointer text-lg font-medium hover:text-blue-600">
+                                        <div class="flex items-center gap-1">
+                                            <span>{{ $person->first_name }} {{ $person->last_name }}</span>
+                                        </div>
 
-                                        <!-- NEU: Gast und Gastgeber Badges -->
-                                        @if ($person->isGuest())
-                                            <span
-                                                class="rounded bg-blue-100 px-2 py-1 text-xs text-blue-800">Gast</span>
-                                        @endif
-                                        @if ($person->can_have_guests)
-                                            <span
-                                                class="rounded bg-purple-100 px-2 py-1 text-xs text-purple-800">Gastgeber</span>
-                                        @endif
+                                        <!-- NEU: Badges in separater Zeile -->
+                                        <div class="mt-1 flex flex-wrap gap-1">
+                                            @if ($person->isGuest())
+                                                <span
+                                                    class="rounded bg-blue-100 px-2 py-1 text-xs text-blue-800">Gast</span>
+                                            @endif
+                                            @if ($person->can_have_guests)
+                                                <span
+                                                    class="rounded bg-purple-100 px-2 py-1 text-xs text-purple-800">kann
+                                                    Gäste haben</span>
+                                            @endif
+                                        </div>
                                     </div>
 
                                     @if ($person->band)
@@ -585,6 +590,10 @@
                             @endfor
                         </div>
                     </div>
+
+                    @if ($selectedBandFromSearch->all_present)
+                        <span class="rounded-full bg-green-100 px-3 py-1 text-sm text-green-800">Alle anwesend</span>
+                    @endif
                 </div>
 
                 <!-- Band Members -->
@@ -706,8 +715,7 @@
                                 <span class="ml-2 rounded bg-blue-100 px-2 py-1 text-sm text-blue-800">Gast</span>
                             @endif
                             @if ($selectedPerson->can_have_guests)
-                                <span
-                                    class="ml-2 rounded bg-purple-100 px-2 py-1 text-sm text-purple-800">Gastgeber</span>
+                                <span class="ml-2 rounded bg-purple-100 px-2 py-1 text-sm text-purple-800">Host</span>
                             @endif
                         </h3>
 

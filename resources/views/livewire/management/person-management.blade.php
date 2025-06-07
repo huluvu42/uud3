@@ -77,14 +77,16 @@
                                 <div class="xl:col-span-1">
                                     <div class="mb-1 text-lg font-medium">
                                         {{ $person->first_name }} {{ $person->last_name }}
+                                    </div>
+                                    <!-- Badges in separater Zeile -->
+                                    <div class="mb-2 flex flex-wrap gap-1">
                                         @if ($person->isGuest())
                                             <span
-                                                class="ml-1 rounded bg-blue-100 px-2 py-1 text-xs text-blue-800">Gast</span>
+                                                class="rounded bg-blue-100 px-2 py-1 text-xs text-blue-800">Gast</span>
                                         @endif
                                         @if ($person->can_have_guests)
-                                            <span
-                                                class="ml-1 rounded bg-purple-100 px-2 py-1 text-xs text-purple-800">kann
-                                                G&auml;ste haben</span>
+                                            <span class="rounded bg-purple-100 px-2 py-1 text-xs text-purple-800">kann
+                                                Gäste haben</span>
                                         @endif
                                     </div>
                                     @if ($person->group)
