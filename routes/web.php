@@ -8,6 +8,7 @@ use App\Livewire\Admin\Settings;
 use App\Livewire\Admin\ChangeLog;
 use App\Livewire\Management\GroupManagement;
 use App\Livewire\Management\BandManagement;
+use App\Livewire\Management\Statistics; // Neue Import
 use App\Livewire\Admin\KnackImport;
 use App\Livewire\Admin\KnackObjectsManagement;
 use App\Livewire\Management\PersonManagement;
@@ -89,27 +90,35 @@ Route::middleware(['auth'])->prefix('management')->name('management.')->group(fu
     Route::get('/personen', PersonManagement::class)
         ->name('personen'); // German alias
 
-    // Groups, Subgroups & Stages Management
-    Route::get('/groups', GroupManagement::class)
-        ->name('groups');
-
-    Route::get('/gruppen', GroupManagement::class)
-        ->name('gruppen'); // German alias
-
     // Band Management
     Route::get('/bands', BandManagement::class)
         ->name('bands');
 
     Route::get('/baende', BandManagement::class)
         ->name('baende'); // German alias
+
+    // Management Routes that require manage permission
+    Route::middleware(['admin:manage'])->group(function () {
+        // Groups, Subgroups & Stages Management
+        Route::get('/groups', GroupManagement::class)
+            ->name('groups');
+
+        Route::get('/gruppen', GroupManagement::class)
+            ->name('gruppen'); // German alias
+
+        // Statistics - NEW
+        Route::get('/statistics', Statistics::class)
+            ->name('statistics');
+
+        Route::get('/statistiken', Statistics::class)
+            ->name('statistiken'); // German alias
+    });
 });
-
-
 
 // ===== ADMIN ROUTES =====
 
 // Admin Routes - require authentication and admin privileges
-Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'admin:admin'])->prefix('admin')->name('admin.')->group(function () {
 
     // Admin Dashboard (redirect to users for now)
     Route::get('/', function () {
@@ -172,6 +181,14 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         ->name('duplicates');
 });
 
+// ===== SPECIAL PERMISSION ROUTES =====
+
+// Routes that require reset permissions (can be accessed by admins or users with reset rights)
+Route::middleware(['auth', 'admin:reset'])->group(function () {
+    // Hier könnten spezielle Reset-Funktionen stehen
+    // Route::get('/special-reset-function', SomeController::class);
+});
+
 // ===== API ROUTES (optional for future extensions) =====
 
 // API Routes for potential mobile app or external integrations
@@ -199,23 +216,33 @@ Route::prefix('api')->middleware(['auth:sanctum'])->group(function () {
         return response()->json(['data' => $persons]);
     })->name('api.persons.search');
 
-    // Current settings API
-    Route::get('/settings', function () {
+    // Current settings API - requires manage permission
+    Route::middleware(['admin:manage'])->get('/settings', function () {
         $settings = \App\Models\Settings::current();
         return response()->json(['data' => $settings]);
     })->name('api.settings');
 
-    // Stages API
-    Route::get('/stages', function () {
+    // Stages API - requires manage permission
+    Route::middleware(['admin:manage'])->get('/stages', function () {
         $stages = \App\Models\Stage::where('year', now()->year)->get();
         return response()->json(['data' => $stages]);
     })->name('api.stages');
 
-    // Groups API
-    Route::get('/groups', function () {
+    // Groups API - requires manage permission
+    Route::middleware(['admin:manage'])->get('/groups', function () {
         $groups = \App\Models\Group::where('year', now()->year)->with('subgroups')->get();
         return response()->json(['data' => $groups]);
     })->name('api.groups');
+
+    // Statistics API - requires manage permission
+    Route::middleware(['admin:manage'])->get('/statistics', function () {
+        $statistics = app(\App\Livewire\Management\Statistics::class);
+        $statistics->loadStatistics();
+        return response()->json([
+            'statistics' => $statistics->statistics,
+            'summary' => $statistics->summary
+        ]);
+    })->name('api.statistics');
 
     // Bands API
     Route::get('/bands', function () {
@@ -240,6 +267,33 @@ if (app()->environment(['local', 'testing'])) {
                 'last_name' => 'User',
                 'is_admin' => false,
                 'can_reset_changes' => false,
+                'can_manage' => false,
+            ]);
+        }
+
+        // Create test manager user if not exists
+        if (!\App\Models\User::where('username', 'manager')->exists()) {
+            \App\Models\User::create([
+                'username' => 'manager',
+                'password' => \Illuminate\Support\Facades\Hash::make('manager123'),
+                'first_name' => 'Test',
+                'last_name' => 'Manager',
+                'is_admin' => false,
+                'can_reset_changes' => false,
+                'can_manage' => true,
+            ]);
+        }
+
+        // Create test user with reset permissions
+        if (!\App\Models\User::where('username', 'resetter')->exists()) {
+            \App\Models\User::create([
+                'username' => 'resetter',
+                'password' => \Illuminate\Support\Facades\Hash::make('reset123'),
+                'first_name' => 'Test',
+                'last_name' => 'Resetter',
+                'is_admin' => false,
+                'can_reset_changes' => true,
+                'can_manage' => false,
             ]);
         }
 
@@ -255,6 +309,11 @@ if (app()->environment(['local', 'testing'])) {
                 'wristband_color_day_3' => 'Grün',
                 'wristband_color_day_4' => 'Gelb',
                 'year' => now()->year,
+                'voucher_label' => 'Essensmarken',
+                'day_1_label' => 'Donnerstag',
+                'day_2_label' => 'Freitag',
+                'day_3_label' => 'Samstag',
+                'day_4_label' => 'Sonntag',
             ]);
         }
 
@@ -279,7 +338,7 @@ if (app()->environment(['local', 'testing'])) {
 
         // Create sample groups
         if (!\App\Models\Group::where('year', now()->year)->exists()) {
-            \App\Models\Group::create([
+            $vipGroup = \App\Models\Group::create([
                 'name' => 'VIP',
                 'backstage_day_1' => true,
                 'backstage_day_2' => true,
@@ -292,7 +351,7 @@ if (app()->environment(['local', 'testing'])) {
                 'year' => now()->year,
             ]);
 
-            \App\Models\Group::create([
+            $crewGroup = \App\Models\Group::create([
                 'name' => 'Crew',
                 'backstage_day_1' => true,
                 'backstage_day_2' => true,
@@ -304,9 +363,67 @@ if (app()->environment(['local', 'testing'])) {
                 'voucher_day_4' => 1.0,
                 'year' => now()->year,
             ]);
+
+            // Create sample persons with voucher data
+            if (!\App\Models\Person::where('year', now()->year)->exists()) {
+                $person1 = \App\Models\Person::create([
+                    'first_name' => 'Max',
+                    'last_name' => 'Mustermann',
+                    'group_id' => $vipGroup->id,
+                    'voucher_day_1' => 2.0,
+                    'voucher_day_2' => 2.0,
+                    'voucher_day_3' => 2.0,
+                    'voucher_day_4' => 2.0,
+                    'voucher_issued_day_1' => 1.0,
+                    'voucher_issued_day_2' => 2.0,
+                    'voucher_issued_day_3' => 0.0,
+                    'voucher_issued_day_4' => 1.0,
+                    'year' => now()->year,
+                ]);
+
+                $person2 = \App\Models\Person::create([
+                    'first_name' => 'Anna',
+                    'last_name' => 'Schmidt',
+                    'group_id' => $crewGroup->id,
+                    'voucher_day_1' => 1.0,
+                    'voucher_day_2' => 1.0,
+                    'voucher_day_3' => 1.0,
+                    'voucher_day_4' => 1.0,
+                    'voucher_issued_day_1' => 0.5,
+                    'voucher_issued_day_2' => 1.0,
+                    'voucher_issued_day_3' => 1.0,
+                    'voucher_issued_day_4' => 0.0,
+                    'year' => now()->year,
+                ]);
+
+                // Create sample voucher purchases
+                \App\Models\VoucherPurchase::create([
+                    'person_id' => $person1->id,
+                    'amount' => 3.0,
+                    'day' => 1,
+                    'purchase_date' => now(),
+                    'user_id' => 1,
+                ]);
+
+                \App\Models\VoucherPurchase::create([
+                    'person_id' => $person1->id,
+                    'amount' => 1.5,
+                    'day' => 2,
+                    'purchase_date' => now(),
+                    'user_id' => 1,
+                ]);
+
+                \App\Models\VoucherPurchase::create([
+                    'person_id' => $person2->id,
+                    'amount' => 2.0,
+                    'day' => 1,
+                    'purchase_date' => now(),
+                    'user_id' => 1,
+                ]);
+            }
         }
 
-        return 'Test data created successfully! You can now use the system with sample data.';
+        return 'Test data created successfully! Users: admin/admin123, test/test123, manager/manager123, resetter/reset123. Sample statistics data included.';
     })->name('dev.seed');
 
     // Route to clear all logs
@@ -327,6 +444,7 @@ if (app()->environment(['local', 'testing'])) {
             'bands_count' => \App\Models\Band::count(),
             'groups_count' => \App\Models\Group::count(),
             'stages_count' => \App\Models\Stage::count(),
+            'voucher_purchases_count' => \App\Models\VoucherPurchase::count(),
             'current_year' => now()->year,
         ];
     })->name('dev.info');

@@ -27,12 +27,41 @@
 
                 </div>
 
+                <!-- Verwaltung Dropdown (für Benutzer mit Verwaltungsrechten oder Admins) -->
+                @if (auth()->user()->canManage())
+                    <div class="relative border-r border-gray-300 pr-4">
+                        <div class="dropdown">
+                            <button onclick="toggleDropdown('managementDropdown')"
+                                class="{{ request()->routeIs(['management.groups', 'management.statistics']) ? 'ring-2 ring-orange-300' : '' }} flex items-center space-x-1 rounded bg-orange-100 px-3 py-2 text-sm text-orange-700 transition-colors hover:bg-orange-200">
+                                <span>📋 Verwaltung</span>
+                                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M19 9l-7 7-7-7"></path>
+                                </svg>
+                            </button>
+                            <div id="managementDropdown"
+                                class="absolute right-0 z-50 mt-2 hidden w-56 rounded-md border border-gray-200 bg-white shadow-lg">
+                                <div class="py-1">
+                                    <a href="{{ route('management.groups') }}"
+                                        class="{{ request()->routeIs('management.groups') ? 'bg-orange-50 text-orange-700' : '' }} block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                        📁 Gruppen & Bühnen
+                                    </a>
+                                    <a href="{{ route('management.statistics') }}"
+                                        class="{{ request()->routeIs('management.statistics') ? 'bg-orange-50 text-orange-700' : '' }} block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                        📊 Bon Statistiken
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                @endif
+
                 <!-- Admin Dropdown (nur für Admins) -->
                 @if (auth()->user()->is_admin)
                     <div class="relative border-r border-gray-300 pr-4">
                         <div class="dropdown">
                             <button onclick="toggleDropdown('adminDropdown')"
-                                class="{{ request()->routeIs(['management.groups', 'admin.users', 'admin.settings', 'admin.changelog', 'admin.knack-import', 'admin.import', 'admin.datenimport', 'admin.knack-objects', 'admin.knack-objekte']) ? 'ring-2 ring-blue-300' : '' }} flex items-center space-x-1 rounded bg-blue-100 px-3 py-2 text-sm text-blue-700 transition-colors hover:bg-blue-200">
+                                class="{{ request()->routeIs(['admin.users', 'admin.settings', 'admin.changelog', 'admin.knack-import', 'admin.import', 'admin.datenimport', 'admin.knack-objects', 'admin.knack-objekte']) ? 'ring-2 ring-blue-300' : '' }} flex items-center space-x-1 rounded bg-blue-100 px-3 py-2 text-sm text-blue-700 transition-colors hover:bg-blue-200">
                                 <span>⚙️ Admin</span>
                                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -40,13 +69,8 @@
                                 </svg>
                             </button>
                             <div id="adminDropdown"
-                                class="absolute right-0 z-50 mt-2 hidden w-48 rounded-md border border-gray-200 bg-white shadow-lg">
+                                class="absolute right-0 z-50 mt-2 hidden w-56 rounded-md border border-gray-200 bg-white shadow-lg">
                                 <div class="py-1">
-                                    <a href="{{ route('management.groups') }}"
-                                        class="{{ request()->routeIs('management.groups') ? 'bg-blue-50 text-blue-700' : '' }} block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                        📁 Gruppen & Bühnen
-                                    </a>
-
                                     <a href="{{ route('admin.settings') }}"
                                         class="{{ request()->routeIs('admin.settings') ? 'bg-blue-50 text-blue-700' : '' }} block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                         ⚙️ Einstellungen
@@ -96,6 +120,8 @@
                         <div class="text-xs text-gray-500">
                             @if (auth()->user()->is_admin)
                                 Administrator
+                            @elseif (auth()->user()->can_manage)
+                                Verwaltung
                             @else
                                 Mitarbeiter
                             @endif

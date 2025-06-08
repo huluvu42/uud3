@@ -50,7 +50,7 @@
                         <div class="{{ $user->isProtectedAdmin() ? 'border-l-4 border-l-yellow-500 bg-yellow-50' : '' }} rounded-lg border border-gray-200 p-4 hover:bg-gray-50"
                             wire:key="user-{{ $user->id }}-{{ $loop->index }}">
 
-                            <div class="grid grid-cols-1 gap-4 xl:grid-cols-6">
+                            <div class="grid grid-cols-1 gap-4 xl:grid-cols-7">
 
                                 <!-- Benutzer Info -->
                                 <div class="xl:col-span-2">
@@ -73,6 +73,24 @@
                                     <div class="mb-2 text-sm font-medium text-gray-700">Administrator</div>
                                     <div class="flex justify-center">
                                         @if ($user->is_admin)
+                                            <div
+                                                class="flex h-5 w-5 items-center justify-center rounded-full bg-green-100">
+                                                <span class="text-xs font-bold text-green-600">✓</span>
+                                            </div>
+                                        @else
+                                            <div
+                                                class="flex h-5 w-5 items-center justify-center rounded-full bg-red-100">
+                                                <span class="text-xs font-bold text-red-600">✗</span>
+                                            </div>
+                                        @endif
+                                    </div>
+                                </div>
+
+                                <!-- Verwaltung -->
+                                <div class="xl:col-span-1">
+                                    <div class="mb-2 text-sm font-medium text-gray-700">Verwaltung</div>
+                                    <div class="flex justify-center">
+                                        @if ($user->can_manage)
                                             <div
                                                 class="flex h-5 w-5 items-center justify-center rounded-full bg-green-100">
                                                 <span class="text-xs font-bold text-green-600">✓</span>
@@ -154,7 +172,7 @@
             <div class="rounded-lg bg-white p-8 text-center shadow-md">
                 <h3 class="mb-4 text-xl font-semibold text-gray-600">Benutzerverwaltung</h3>
                 <p class="mb-6 text-gray-500">Verwalten Sie hier alle Systembenutzer und deren Berechtigungen.</p>
-                <div class="grid grid-cols-1 gap-4 text-sm text-gray-400 md:grid-cols-2">
+                <div class="grid grid-cols-1 gap-4 text-sm text-gray-400 md:grid-cols-3">
                     <div class="rounded bg-gray-50 p-4">
                         <h4 class="mb-2 font-medium text-gray-600">👤 Benutzer verwalten</h4>
                         <p>Erstellen, bearbeiten und löschen Sie Benutzerkonten</p>
@@ -162,6 +180,10 @@
                     <div class="rounded bg-gray-50 p-4">
                         <h4 class="mb-2 font-medium text-gray-600">🔑 Berechtigungen</h4>
                         <p>Verwalten Sie Administrator- und Zurücksetz-Rechte</p>
+                    </div>
+                    <div class="rounded bg-gray-50 p-4">
+                        <h4 class="mb-2 font-medium text-gray-600">📋 Verwaltungsrechte</h4>
+                        <p>Vergeben Sie Zugriffsrechte für Gruppen & Bühnen</p>
                     </div>
                 </div>
             </div>
@@ -256,6 +278,17 @@
                                                         Administrator bleiben</span>
                                                 @endif
                                             </div>
+                                        </div>
+                                    </label>
+
+                                    <label
+                                        class="{{ $can_manage ? 'border-orange-500 bg-orange-50' : '' }} flex cursor-pointer items-center rounded-lg border p-3 hover:bg-gray-50">
+                                        <input type="checkbox" wire:model="can_manage"
+                                            class="mr-3 rounded border-gray-300 text-orange-600 shadow-sm focus:border-orange-300 focus:ring focus:ring-orange-200 focus:ring-opacity-50">
+                                        <div>
+                                            <div class="font-medium">Verwaltung</div>
+                                            <div class="text-sm text-gray-500">Kann Gruppen, Bühnen und verwandte
+                                                Einstellungen verwalten</div>
                                         </div>
                                     </label>
 

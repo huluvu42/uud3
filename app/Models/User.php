@@ -15,7 +15,8 @@ class User extends Authenticatable
         'first_name',
         'last_name',
         'is_admin',
-        'can_reset_changes'
+        'can_reset_changes',
+        'can_manage' // Neues Feld hinzugefügt
     ];
 
     protected $hidden = ['password'];
@@ -23,6 +24,7 @@ class User extends Authenticatable
     protected $casts = [
         'is_admin' => 'boolean',
         'can_reset_changes' => 'boolean',
+        'can_manage' => 'boolean', // Neues Cast hinzugefügt
     ];
 
     public function changeLogs()
@@ -52,9 +54,6 @@ class User extends Authenticatable
         if ($this->isProtectedAdmin()) {
             return false;
         }
-
-        // Weitere Bedingungen können hier hinzugefügt werden
-        // z.B. wenn Benutzer noch aktive Verknüpfungen hat
 
         return true;
     }
@@ -95,6 +94,14 @@ class User extends Authenticatable
      */
     public function hasSpecialPermissions(): bool
     {
-        return $this->is_admin || $this->can_reset_changes;
+        return $this->is_admin || $this->can_reset_changes || $this->can_manage;
+    }
+
+    /**
+     * Prüft ob der Benutzer Verwaltungsrechte hat (Admin oder explizit berechtigt)
+     */
+    public function canManage(): bool
+    {
+        return $this->is_admin || $this->can_manage;
     }
 }

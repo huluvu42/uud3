@@ -19,6 +19,7 @@ class UserManagement extends Component
     public $last_name = '';
     public $is_admin = false;
     public $can_reset_changes = false;
+    public $can_manage = false; // Neues Feld hinzugefügt
 
     public function mount()
     {
@@ -67,6 +68,7 @@ class UserManagement extends Component
         $this->last_name = $this->editingUser->last_name;
         $this->is_admin = $this->editingUser->is_admin;
         $this->can_reset_changes = $this->editingUser->can_reset_changes;
+        $this->can_manage = $this->editingUser->can_manage; // Neues Feld hinzugefügt
         $this->password = '';
         $this->showModal = true;
     }
@@ -92,6 +94,7 @@ class UserManagement extends Component
             'last_name' => $this->last_name,
             'is_admin' => $this->is_admin,
             'can_reset_changes' => $this->can_reset_changes,
+            'can_manage' => $this->can_manage, // Neues Feld hinzugefügt
         ];
 
         if ($this->password) {
@@ -164,6 +167,7 @@ class UserManagement extends Component
         $this->last_name = '';
         $this->is_admin = false;
         $this->can_reset_changes = false;
+        $this->can_manage = false; // Neues Feld hinzugefügt
     }
 
     public function render()
