@@ -103,7 +103,7 @@
                     <h3 class="mb-3 text-lg font-semibold">Personensuche</h3>
                     <div class="relative">
                         <input type="text" wire:model.live.debounce.500ms="search" wire:focus="focusSearch"
-                            placeholder="Vorname, Nachname..."
+                            placeholder="Vorname, Nachname, KFZ ..."
                             class="w-full rounded-md border border-gray-300 px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-blue-500"
                             id="search-input" autocomplete="off" ondblclick="@this.call('clearSearch')">
 
@@ -606,25 +606,26 @@
         @elseif(!$search && !$bandSearch && !$showBandList)
             <!-- Welcome Message -->
             <div class="rounded-lg bg-white p-8 text-center shadow-md">
-                <h3 class="mb-4 text-xl font-semibold text-gray-600">Willkommen zur Festival Backstage Kontrolle</h3>
-                <p class="mb-6 text-gray-500">Verwenden Sie die Funktionen oben, um Personen oder Bands zu verwalten.
+                <h3 class="mb-4 text-xl font-semibold text-gray-600">Willkommen</h3>
+                <p class="mb-6 text-gray-500">Programm zur Verwaltung des Backstagezungang am Festival
                 </p>
                 <div class="grid grid-cols-1 gap-4 text-sm text-gray-400 md:grid-cols-2 lg:grid-cols-4">
                     <div class="rounded bg-gray-50 p-4">
                         <h4 class="mb-2 font-medium text-gray-600">🔍 Personensuche</h4>
-                        <p>Suchen Sie nach Vor-, Nachname</p>
+                        <p>Suche nach Vor-, Nachname oder KFZ Kennzeichen</p>
                     </div>
                     <div class="rounded bg-gray-50 p-4">
                         <h4 class="mb-2 font-medium text-gray-600">🎵 Band-Suche</h4>
-                        <p>Suchen Sie nach Bandnamen</p>
+                        <p>Suche nach Bandnamen</p>
+                    </div>
+
+                    <div class="rounded bg-gray-50 p-4">
+                        <h4 class="mb-2 font-medium text-gray-600">🎪 Bands des Tages</h4>
+                        <p>Zeigt alle Bands des Tages an</p>
                     </div>
                     <div class="rounded bg-gray-50 p-4">
-                        <h4 class="mb-2 font-medium text-gray-600">🎫 Bonkauf</h4>
-                        <p>Kaufen Sie 0.5 oder 1.0 Bons</p>
-                    </div>
-                    <div class="rounded bg-gray-50 p-4">
-                        <h4 class="mb-2 font-medium text-gray-600">🎪 Bands verwalten</h4>
-                        <p>Zeigen Sie alle Bands des Tages an</p>
+                        <h4 class="mb-2 font-medium text-gray-600">🎫 Personen & Bands</h4>
+                        <p>unter Personen oder Bands können neue Daten eingetragen oder bearbeiten werden</p>
                     </div>
                 </div>
             </div>

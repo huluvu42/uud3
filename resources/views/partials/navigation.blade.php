@@ -77,7 +77,7 @@
                                     </a>
                                     <a href="{{ route('admin.users') }}"
                                         class="{{ request()->routeIs('admin.users') ? 'bg-blue-50 text-blue-700' : '' }} block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                        👥 Benutzer verwalten
+                                        👥 Zugangsverwaltung
                                     </a>
                                     <a href="{{ route('admin.changelog') }}"
                                         class="{{ request()->routeIs('admin.changelog') ? 'bg-blue-50 text-blue-700' : '' }} block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">

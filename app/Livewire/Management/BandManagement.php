@@ -1,5 +1,5 @@
 <?php
-// app/Livewire/Management/BandManagement.php
+// app/Livewire/Management/BandManagement.php - OPTIMIERTE VERSION
 
 namespace App\Livewire\Management;
 
@@ -58,29 +58,89 @@ class BandManagement extends Component
     public $selectedMember = null;
     public $search = '';
 
+    // Performance Cache
+    private $stagesCache = null;
+
     public function mount()
     {
         $this->year = date('Y');
     }
 
+    // NEU: Suchfeld-Management Methoden
+    public function clearSearch()
+    {
+        $this->search = '';
+        $this->resetPage(); // Pagination zurücksetzen
+
+        // JavaScript zum sofortigen Leeren des Input-Felds
+        $this->js('
+            const input = document.getElementById("search-input");
+            if (input) {
+                input.value = "";
+                input.focus();
+            }
+        ');
+    }
+
+    public function focusSearch()
+    {
+        $this->js('
+            setTimeout(() => {
+                const input = document.getElementById("search-input");
+                if (input && input.value.trim() !== "") {
+                    input.select();
+                }
+            }, 10);
+        ');
+    }
+
+    // Cache-Management für Stages
+    private function getStagesCache()
+    {
+        if ($this->stagesCache === null) {
+            $this->stagesCache = Stage::select(['id', 'name'])->orderBy('name')->get();
+        }
+        return $this->stagesCache;
+    }
+
+    private function resetCache()
+    {
+        $this->stagesCache = null;
+    }
+
+    // Optimierte render() Methode
     public function render()
     {
-        $bands = Band::with(['stage', 'members', 'vehiclePlates'])
-            ->when($this->search, function($query) {
-                $query->where('band_name', 'like', '%' . $this->search . '%');
+        // Optimierte Query mit Select Fields
+        $bands = Band::with([
+            'stage:id,name',
+            'members:id,band_id,present', // Nur nötige Felder für Count
+            'vehiclePlates:id,band_id,license_plate' // Nur nötige Felder
+        ])
+            ->select([
+                'id',
+                'band_name',
+                'year',
+                'stage_id',
+                'all_present',
+                'plays_day_1',
+                'plays_day_2',
+                'plays_day_3',
+                'plays_day_4'
+            ])
+            ->when($this->search, function ($query) {
+                $query->where('band_name', 'ILIKE', '%' . $this->search . '%');
             })
             ->orderBy('band_name')
             ->paginate(10);
 
-        $stages = Stage::orderBy('name')->get();
-
         return view('livewire.management.band-management', [
             'bands' => $bands,
-            'stages' => $stages
+            'stages' => $this->getStagesCache()
         ]);
     }
 
-    // Band CRUD Methods
+    // Band CRUD Methods (mit Cache-Reset)
     public function createBand()
     {
         $this->showCreateForm = true;
@@ -106,6 +166,7 @@ class BandManagement extends Component
             'year' => $this->year, // Wird automatisch auf aktuelles Jahr gesetzt
         ]);
 
+        $this->resetCache(); // Cache leeren
         $this->showCreateForm = false;
         $this->resetBandForm();
         session()->flash('message', 'Band wurde erfolgreich erstellt!');
@@ -144,6 +205,7 @@ class BandManagement extends Component
             // Jahr wird beim Bearbeiten nicht verändert
         ]);
 
+        $this->resetCache(); // Cache leeren
         $this->showEditForm = false;
         $this->resetBandForm();
         session()->flash('message', 'Band wurde erfolgreich aktualisiert!');
@@ -152,6 +214,7 @@ class BandManagement extends Component
     public function deleteBand($id)
     {
         Band::findOrFail($id)->delete();
+        $this->resetCache(); // Cache leeren
         session()->flash('message', 'Band wurde erfolgreich gelöscht!');
     }
 
@@ -166,7 +229,7 @@ class BandManagement extends Component
         $this->selectedBand = Band::findOrFail($bandId);
         $this->showMemberForm = true;
         $this->resetMemberForm();
-        
+
         // Vorgaben von der Bühne laden
         $this->loadStageDefaults();
     }
@@ -178,14 +241,14 @@ class BandManagement extends Component
         }
 
         $stage = $this->selectedBand->stage;
-        
+
         // Backstage-Access setzen
         $backstageAccess = $this->calculateBackstageAccess($stage);
         $this->backstage_day_1 = $backstageAccess['day_1'];
         $this->backstage_day_2 = $backstageAccess['day_2'];
         $this->backstage_day_3 = $backstageAccess['day_3'];
         $this->backstage_day_4 = $backstageAccess['day_4'];
-        
+
         // Voucher setzen
         $vouchers = $this->calculateVouchers($stage);
         $this->voucher_day_1 = $vouchers['day_1'] > 0 ? $vouchers['day_1'] : '';
@@ -208,10 +271,10 @@ class BandManagement extends Component
 
         // Bühnen-Vorgaben laden
         $stage = $this->selectedBand->stage;
-        
+
         // Backstage-Access basierend auf Bühne und Auftrittstagen setzen
         $backstageAccess = $this->calculateBackstageAccess($stage);
-        
+
         // Voucher basierend auf Bühne und Auftrittstagen setzen
         $vouchers = $this->calculateVouchers($stage);
 
@@ -234,7 +297,7 @@ class BandManagement extends Component
 
         // All-present Status aktualisieren
         $this->selectedBand->updateAllPresentStatus();
-        
+
         // Band-Mitglieder neu laden
         $this->selectedBand = Band::with(['members', 'vehiclePlates'])->find($this->selectedBand->id);
 
@@ -337,7 +400,7 @@ class BandManagement extends Component
 
         // All-present Status aktualisieren
         $this->selectedBand->updateAllPresentStatus();
-        
+
         // Band-Mitglieder neu laden
         $this->selectedBand = Band::with(['members', 'vehiclePlates'])->find($this->selectedBand->id);
 
@@ -349,13 +412,13 @@ class BandManagement extends Component
     public function deleteMember($memberId)
     {
         Person::findOrFail($memberId)->delete();
-        
+
         // All-present Status aktualisieren
         $this->selectedBand->updateAllPresentStatus();
-        
+
         // Band-Mitglieder neu laden
         $this->selectedBand = Band::with(['members', 'vehiclePlates'])->find($this->selectedBand->id);
-        
+
         session()->flash('message', 'Mitglied wurde erfolgreich entfernt!');
     }
 
@@ -389,10 +452,10 @@ class BandManagement extends Component
     public function deleteVehicle($vehicleId)
     {
         VehiclePlate::findOrFail($vehicleId)->delete();
-        
+
         // Band-Daten neu laden
         $this->selectedBand = Band::with(['members', 'vehiclePlates'])->find($this->selectedBand->id);
-        
+
         session()->flash('message', 'KFZ-Kennzeichen wurde erfolgreich entfernt!');
     }
 
@@ -400,7 +463,7 @@ class BandManagement extends Component
     public function addGuest($memberId)
     {
         $this->selectedMember = Person::findOrFail($memberId);
-        
+
         // Prüfen ob bereits ein Gast existiert
         if ($this->selectedMember->guest) {
             session()->flash('error', 'Dieses Mitglied hat bereits einen Gast!');
@@ -478,10 +541,10 @@ class BandManagement extends Component
     public function deleteGuest($guestId)
     {
         Person::findOrFail($guestId)->delete();
-        
+
         // Band-Daten neu laden
         $this->selectedBand = Band::with(['members', 'vehiclePlates'])->find($this->selectedBand->id);
-        
+
         session()->flash('message', 'Gast wurde erfolgreich entfernt!');
     }
 
