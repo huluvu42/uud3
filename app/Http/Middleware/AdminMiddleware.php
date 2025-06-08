@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Support\Facades\Log;
 
 class AdminMiddleware
 {
@@ -22,7 +23,7 @@ class AdminMiddleware
         // Prüfe ob Benutzer eingeloggt ist
         if (!Auth::check()) {
             // Log unauthorized access attempt
-            \Log::warning('Unauthorized access attempt', [
+            Log::warning('Unauthorized access attempt', [
                 'ip' => $request->ip(),
                 'url' => $request->fullUrl(),
                 'user_agent' => $request->userAgent(),
@@ -48,7 +49,7 @@ class AdminMiddleware
 
         if (!$hasPermission) {
             // Log unauthorized access attempt by user without required permission
-            \Log::warning('User tried to access area without required permission', [
+            Log::warning('User tried to access area without required permission', [
                 'user_id' => $user->id,
                 'username' => $user->username,
                 'required_permission' => $permission,
@@ -82,7 +83,7 @@ class AdminMiddleware
         }
 
         // Log successful access
-        \Log::info('Protected area accessed', [
+        Log::info('Protected area accessed', [
             'user_id' => $user->id,
             'username' => $user->username,
             'required_permission' => $permission,
@@ -125,7 +126,7 @@ class AdminMiddleware
 
             default:
                 // Unbekannte Berechtigung - nur für Admins
-                \Log::warning('Unknown permission type requested', [
+                Log::warning('Unknown permission type requested', [
                     'permission' => $permission,
                     'user_id' => $user->id,
                 ]);

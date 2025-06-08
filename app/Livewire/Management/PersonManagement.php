@@ -1,8 +1,9 @@
 <?php
-// app/Livewire/Management/PersonManagement.php - OPTIMIERTE VERSION
+// app/Livewire/Management/PersonManagement.php - VEREINFACHTE VERSION
 
 namespace App\Livewire\Management;
 
+use Illuminate\Support\Facades\DB;
 use App\Models\Person;
 use App\Models\Group;
 use App\Models\Subgroup;
@@ -52,7 +53,6 @@ class PersonManagement extends Component
     private $groupsCache = null;
     private $bandsCache = null;
     private $responsiblePersonsCache = null;
-    private $lastQueryTime = null;
 
     public function mount()
     {
@@ -60,13 +60,12 @@ class PersonManagement extends Component
         $this->settings = Settings::current();
     }
 
-    // Neue Methode zum Leeren des Suchfelds
+    // Suchfeld-Management
     public function clearSearch()
     {
         $this->search = '';
-        $this->resetPage(); // Pagination zurücksetzen
+        $this->resetPage();
 
-        // JavaScript ausführen um das Input-Feld sofort zu leeren
         $this->js('
             const input = document.getElementById("search-input");
             if (input) {
@@ -76,10 +75,8 @@ class PersonManagement extends Component
         ');
     }
 
-    // Neue Methode zum Markieren des Suchtext bei Focus
     public function focusSearch()
     {
-        // Dispatch JavaScript Event zum Markieren des Texts
         $this->js('
             setTimeout(() => {
                 const input = document.getElementById("search-input");
@@ -93,7 +90,6 @@ class PersonManagement extends Component
     public function updatedSearch()
     {
         $this->resetPage();
-        // Debouncing wird durch wire:model.live.debounce.300ms im Template gehandhabt
     }
 
     public function updatedFilterType()
@@ -106,12 +102,11 @@ class PersonManagement extends Component
         $this->resetPage();
     }
 
-    // OPTIMIERTE Query-Methode
+    // Query-Methode
     private function getPersonsQuery()
     {
         $query = Person::query();
 
-        // Nur benötigte Felder auswählen für bessere Performance
         $query->select([
             'id',
             'first_name',
@@ -135,20 +130,19 @@ class PersonManagement extends Component
             'is_duplicate'
         ]);
 
-        // Optimierte Eager Loading - nur benötigte Felder
         $query->with([
             'group:id,name,can_have_guests',
             'subgroup:id,name,group_id',
             'band:id,band_name',
             'responsiblePerson:id,first_name,last_name',
-            'responsibleFor:id,responsible_person_id,first_name,last_name', // Für Count
-            'vehiclePlates:id,person_id,license_plate' // Nur nötige Felder
+            'responsibleFor:id,responsible_person_id,first_name,last_name',
+            'vehiclePlates:id,person_id,license_plate'
         ]);
 
         $query->where('year', $this->year)
             ->where('is_duplicate', false);
 
-        // Optimierte Search-Filter
+        // Search-Filter
         if ($this->search && strlen($this->search) >= 2) {
             $searchTerm = strtolower(trim($this->search));
 
@@ -156,23 +150,20 @@ class PersonManagement extends Component
                 $q->whereRaw('LOWER(first_name) LIKE ?', ['%' . $searchTerm . '%'])
                     ->orWhereRaw('LOWER(last_name) LIKE ?', ['%' . $searchTerm . '%'])
                     ->orWhereRaw('LOWER(CONCAT(first_name, \' \', last_name)) LIKE ?', ['%' . $searchTerm . '%'])
-                    // Optimierte Subquery für Kennzeichen
                     ->orWhereExists(function ($plateQuery) use ($searchTerm) {
-                        $plateQuery->select(\DB::raw(1))
+                        $plateQuery->select(DB::raw(1))
                             ->from('vehicle_plates')
                             ->whereColumn('vehicle_plates.person_id', 'persons.id')
                             ->whereRaw('LOWER(license_plate) LIKE ?', ['%' . $searchTerm . '%']);
                     })
-                    // Optimierte Subquery für Gruppennamen
                     ->orWhereExists(function ($groupQuery) use ($searchTerm) {
-                        $groupQuery->select(\DB::raw(1))
+                        $groupQuery->select(DB::raw(1))
                             ->from('groups')
                             ->whereColumn('groups.id', 'persons.group_id')
                             ->whereRaw('LOWER(name) LIKE ?', ['%' . $searchTerm . '%']);
                     })
-                    // Optimierte Subquery für Bandnamen
                     ->orWhereExists(function ($bandQuery) use ($searchTerm) {
-                        $bandQuery->select(\DB::raw(1))
+                        $bandQuery->select(DB::raw(1))
                             ->from('bands')
                             ->whereColumn('bands.id', 'persons.band_id')
                             ->whereRaw('LOWER(band_name) LIKE ?', ['%' . $searchTerm . '%']);
@@ -180,7 +171,7 @@ class PersonManagement extends Component
             });
         }
 
-        // Optimierte Type-Filter
+        // Type-Filter
         if ($this->filterType !== 'all') {
             switch ($this->filterType) {
                 case 'groups':
@@ -203,7 +194,7 @@ class PersonManagement extends Component
         return $query->orderBy('last_name')->orderBy('first_name');
     }
 
-    // OPTIMIERTE Presence Toggle mit smartem Refresh
+    // Presence Toggle
     public function togglePresence($personId)
     {
         $person = Person::select(['id', 'first_name', 'last_name', 'present', 'band_id'])
@@ -217,7 +208,6 @@ class PersonManagement extends Component
         $person->present = !$person->present;
         $person->save();
 
-        // Band's all_present Status aktualisieren falls Person in einer Band ist
         if ($person->band_id) {
             $band = Band::find($person->band_id);
             if ($band) {
@@ -225,27 +215,23 @@ class PersonManagement extends Component
             }
         }
 
-        // Smart refresh - nur das nötigste aktualisieren
         $this->smartRefresh();
 
         $statusText = $person->present ? 'anwesend' : 'abwesend';
         session()->flash('success', "{$person->first_name} {$person->last_name} ist jetzt {$statusText}.");
     }
 
-    // NEUE smartRefresh Methode
+    // Smart Refresh
     private function smartRefresh($preserveSearch = true)
     {
-        // Gäste-Modal aktualisieren falls geöffnet
         if ($this->selectedPersonForGuests) {
             $this->selectedPersonForGuests = Person::with([
                 'responsibleFor:id,responsible_person_id,first_name,last_name,present'
             ])->find($this->selectedPersonForGuests->id);
         }
 
-        // Cache leeren für nächsten Render
         $this->resetCache();
 
-        // Nur bei Bedarf Pagination zurücksetzen
         if (!$preserveSearch && $this->search) {
             $this->resetPage();
         }
@@ -259,7 +245,7 @@ class PersonManagement extends Component
         $this->responsiblePersonsCache = null;
     }
 
-    // OPTIMIERTE Datenabfragen mit Caching
+    // Cache Methods
     private function getGroupsCache()
     {
         if ($this->groupsCache === null) {
@@ -304,7 +290,7 @@ class PersonManagement extends Component
         return $this->responsiblePersonsCache;
     }
 
-    // Person CRUD Methods (optimiert)
+    // Person CRUD Methods
     public function savePerson($continueAdding = false)
     {
         $this->continueAdding = $continueAdding;
@@ -349,7 +335,6 @@ class PersonManagement extends Component
             'year' => $this->year,
         ]);
 
-        // Cache leeren da neue Person hinzugefügt
         $this->resetCache();
 
         if ($this->continueAdding) {
@@ -406,9 +391,7 @@ class PersonManagement extends Component
             'responsible_person_id' => $this->responsible_person_id ?: null,
         ]);
 
-        // Cache leeren da Person geändert
         $this->resetCache();
-
         $this->showEditForm = false;
         $this->resetPersonForm();
         session()->flash('success', 'Person wurde erfolgreich aktualisiert!');
@@ -425,7 +408,40 @@ class PersonManagement extends Component
         }
     }
 
-    // OPTIMIERTE Gäste-Modal Methoden
+    // VEREINFACHTE editPerson Methode (wie im Band-Management)
+    public function editPerson($id)
+    {
+        $this->editingPerson = Person::findOrFail($id);
+
+        // Andere Modals explizit schließen
+        $this->showCreateForm = false;
+        $this->showGuestsModal = false;
+
+        // Alle Felder setzen
+        $this->first_name = $this->editingPerson->first_name;
+        $this->last_name = $this->editingPerson->last_name;
+        $this->present = $this->editingPerson->present;
+        $this->can_have_guests = $this->editingPerson->can_have_guests;
+        $this->backstage_day_1 = $this->editingPerson->backstage_day_1;
+        $this->backstage_day_2 = $this->editingPerson->backstage_day_2;
+        $this->backstage_day_3 = $this->editingPerson->backstage_day_3;
+        $this->backstage_day_4 = $this->editingPerson->backstage_day_4;
+        $this->voucher_day_1 = $this->editingPerson->voucher_day_1;
+        $this->voucher_day_2 = $this->editingPerson->voucher_day_2;
+        $this->voucher_day_3 = $this->editingPerson->voucher_day_3;
+        $this->voucher_day_4 = $this->editingPerson->voucher_day_4;
+        $this->remarks = $this->editingPerson->remarks;
+        $this->group_id = $this->editingPerson->group_id;
+        $this->subgroup_id = $this->editingPerson->subgroup_id;
+        $this->band_id = $this->editingPerson->band_id;
+        $this->responsible_person_id = $this->editingPerson->responsible_person_id;
+        $this->year = $this->editingPerson->year;
+
+        // Modal öffnen - NACH dem Setzen aller Felder
+        $this->showEditForm = true;
+    }
+
+    // Gäste-Modal Methoden
     public function toggleGuestPresence($guestId)
     {
         $guest = Person::select(['id', 'first_name', 'last_name', 'present'])->find($guestId);
@@ -438,7 +454,6 @@ class PersonManagement extends Component
         $guest->present = !$guest->present;
         $guest->save();
 
-        // Nur die Gäste-Liste aktualisieren
         if ($this->selectedPersonForGuests) {
             $this->selectedPersonForGuests = Person::with([
                 'responsibleFor:id,responsible_person_id,first_name,last_name,present,backstage_day_1,backstage_day_2,backstage_day_3,backstage_day_4,voucher_day_1,voucher_day_2,voucher_day_3,voucher_day_4,remarks'
@@ -449,7 +464,7 @@ class PersonManagement extends Component
         session()->flash('success', "{$guest->first_name} {$guest->last_name} ist jetzt als {$statusText} markiert.");
     }
 
-    // Wristband color helper (unverändert, aber effizienter)
+    // Wristband color helper
     public function getWristbandColorForPerson($person)
     {
         if (!$this->settings) return null;
@@ -479,7 +494,7 @@ class PersonManagement extends Component
             $person->backstage_day_3 || $person->backstage_day_4;
     }
 
-    // Gruppen-basierte Voreinstellungen (optimiert)
+    // Gruppen-basierte Voreinstellungen
     public function updatedGroupId()
     {
         if ($this->group_id) {
@@ -509,7 +524,7 @@ class PersonManagement extends Component
         }
     }
 
-    // Optimierte Untergruppen
+    // Untergruppen
     public function getSubgroupsProperty()
     {
         if ($this->group_id) {
@@ -521,7 +536,7 @@ class PersonManagement extends Component
         return collect();
     }
 
-    // Weitere Methoden unverändert...
+    // Helper Methods
     public function resetPersonForm()
     {
         $this->first_name = '';
@@ -557,30 +572,6 @@ class PersonManagement extends Component
     {
         $this->showCreateForm = true;
         $this->resetPersonForm();
-    }
-
-    public function editPerson($id)
-    {
-        $this->editingPerson = Person::findOrFail($id);
-        $this->first_name = $this->editingPerson->first_name;
-        $this->last_name = $this->editingPerson->last_name;
-        $this->present = $this->editingPerson->present;
-        $this->can_have_guests = $this->editingPerson->can_have_guests;
-        $this->backstage_day_1 = $this->editingPerson->backstage_day_1;
-        $this->backstage_day_2 = $this->editingPerson->backstage_day_2;
-        $this->backstage_day_3 = $this->editingPerson->backstage_day_3;
-        $this->backstage_day_4 = $this->editingPerson->backstage_day_4;
-        $this->voucher_day_1 = $this->editingPerson->voucher_day_1;
-        $this->voucher_day_2 = $this->editingPerson->voucher_day_2;
-        $this->voucher_day_3 = $this->editingPerson->voucher_day_3;
-        $this->voucher_day_4 = $this->editingPerson->voucher_day_4;
-        $this->remarks = $this->editingPerson->remarks;
-        $this->group_id = $this->editingPerson->group_id;
-        $this->subgroup_id = $this->editingPerson->subgroup_id;
-        $this->band_id = $this->editingPerson->band_id;
-        $this->responsible_person_id = $this->editingPerson->responsible_person_id;
-        $this->year = $this->editingPerson->year;
-        $this->showEditForm = true;
     }
 
     public function showGuests($personId)

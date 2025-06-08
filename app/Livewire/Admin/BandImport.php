@@ -517,7 +517,7 @@ class BandImport extends Component
                 throw new \Exception('Bühne ist erforderlich');
             }
         }
-
+        // $stage = collect($this->stages)->firstWhere('name', $stageName);
         $stage = $this->stages->firstWhere('name', $stageName);
         if (!$stage) {
             throw new \Exception("Bühne '{$stageName}' nicht gefunden");

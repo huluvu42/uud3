@@ -4,6 +4,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Contracts\Encryption\DecryptException;
 
@@ -48,7 +49,7 @@ class KnackObject extends Model
         try {
             return Crypt::decryptString($this->encrypted_api_key);
         } catch (DecryptException $e) {
-            \Log::error('Knack Object API Key decryption failed: ' . $e->getMessage(), [
+            Log::error('Knack Object API Key decryption failed: ' . $e->getMessage(), [
                 'knack_object_id' => $this->id,
                 'knack_object_name' => $this->name
             ]);

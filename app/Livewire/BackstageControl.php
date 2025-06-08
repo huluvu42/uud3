@@ -3,6 +3,7 @@
 
 namespace App\Livewire;
 
+use Illuminate\Support\Facades\Log;
 use Livewire\Component;
 use App\Models\Person;
 use App\Models\Band;
@@ -511,7 +512,7 @@ class BackstageControl extends Component
             $this->forceRefresh();
         } catch (\Exception $e) {
             session()->flash('error', 'Fehler beim Kauf: ' . $e->getMessage());
-            \Log::error('Voucher purchase error: ' . $e->getMessage());
+            Log::error('Voucher purchase error: ' . $e->getMessage());
         }
     }
 
