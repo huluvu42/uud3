@@ -1,4 +1,80 @@
-{{-- resources/views/livewire/backstage-control.blade.php --}}
+@script
+    <script>
+        // Performance Optimierungen
+        let clickTimeout = null;
+
+        // Verhindere Spam-Klicks
+        document.addEventListener('click', function(e) {
+            if (e.target.matches('[wire\\:click*="togglePresence"]') ||
+                e.target.matches('[wire\\:click*="issueVouchers"]') ||
+                e.target.closest('[wire\\:click*="togglePresence"]') ||
+                e.target.closest('[wire\\:click*="issueVouchers"]')) {
+
+                if (clickTimeout) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
+
+                clickTimeout = setTimeout(() => {
+                    clickTimeout = null;
+                }, 1000); // 1 Sekunde Sperre
+            }
+        });
+
+        // Loading States visuell verbessern
+        window.addEventListener('livewire:request', () => {
+            document.body.style.cursor = 'wait';
+        });
+
+        window.addEventListener('livewire:response', () => {
+            document.body.style.cursor = 'default';
+        });
+
+        $wire.on('search-cleared', () => {
+            const searchInput = document.querySelector('input[wire\\:model\\.live\\.debounce\\.500ms="search"]');
+            const bandSearchInput = document.querySelector(
+                'input[wire\\:model\\.live\\.debounce\\.500ms="bandSearch"]');
+
+            if (searchInput) {
+                searchInput.value = '';
+                searchInput.dispatchEvent(new Event('input', {
+                    bubbles: true
+                }));
+            }
+
+            if (bandSearchInput) {
+                bandSearchInput.value = '';
+                bandSearchInput.dispatchEvent(new Event('input', {
+                    bubbles: true
+                }));
+            }
+        });
+
+        $wire.on('refresh-component', () => {
+            // Weniger aggressive DOM-Updates
+            // window.Livewire.find($wire.__instance.id).call('$refresh');
+        });
+
+        // LocalStorage für Bühnenauswahl
+        window.addEventListener('DOMContentLoaded', function() {
+            // Beim Laden der Seite gespeicherte Bühne laden
+            const savedStageId = localStorage.getItem('backstage_purchase_stage_id');
+            if (savedStageId && savedStageId !== 'null') {
+                $wire.set('purchaseStageId', parseInt(savedStageId));
+            }
+        });
+
+        // Livewire Event Listener für Stage-Änderungen
+        $wire.on('stage-selected', (stageId) => {
+            if (stageId && stageId !== null) {
+                localStorage.setItem('backstage_purchase_stage_id', stageId);
+            } else {
+                localStorage.removeItem('backstage_purchase_stage_id');
+            }
+        });
+    </script>
+@endscript{{-- resources/views/livewire/backstage-control.blade.php --}}
 
 <div class="container mx-auto px-4 py-8">
     @include('partials.navigation')
@@ -25,10 +101,25 @@
                 <!-- Personensuche -->
                 <div>
                     <h3 class="mb-3 text-lg font-semibold">Personensuche</h3>
-                    <input type="text" wire:model.live.debounce.300ms="search" placeholder="Vorname, Nachname..."
-                        class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <div class="relative">
+                        <input type="text" wire:model.live.debounce.500ms="search" wire:focus="focusSearch"
+                            placeholder="Vorname, Nachname..."
+                            class="w-full rounded-md border border-gray-300 px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            id="search-input" autocomplete="off" ondblclick="@this.call('clearSearch')">
 
-                    @if ($search)
+                        @if ($search)
+                            <button type="button" wire:click="clearSearch"
+                                class="absolute right-2 top-1/2 -translate-y-1/2 transform text-gray-400 transition-colors duration-200 hover:text-gray-600"
+                                title="Suche löschen">
+                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        @endif
+                    </div>
+
+                    @if ($search || $bandSearch)
                         <div class="mt-2">
                             <button wire:click="clearAllSearches"
                                 class="text-xs text-gray-500 underline hover:text-gray-700">
@@ -41,17 +132,23 @@
                 <!-- NEU: Band-Suche -->
                 <div>
                     <h3 class="mb-3 text-lg font-semibold">Band-Suche</h3>
-                    <input type="text" wire:model.live.debounce.300ms="bandSearch" placeholder="Bandname..."
-                        class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                    <div class="relative">
+                        <input type="text" wire:model.live.debounce.500ms="bandSearch" wire:focus="focusBandSearch"
+                            placeholder="Bandname..."
+                            class="w-full rounded-md border border-gray-300 px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            id="band-search-input" autocomplete="off" ondblclick="@this.call('clearBandSearch')">
 
-                    @if ($bandSearch)
-                        <div class="mt-2">
-                            <button wire:click="clearAllSearches"
-                                class="text-xs text-gray-500 underline hover:text-gray-700">
-                                🗑️ Alle Suchen zurücksetzen
+                        @if ($bandSearch)
+                            <button type="button" wire:click="clearBandSearch"
+                                class="absolute right-2 top-1/2 -translate-y-1/2 transform text-gray-400 transition-colors duration-200 hover:text-gray-600"
+                                title="Band-Suche löschen">
+                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M6 18L18 6M6 6l12 12" />
+                                </svg>
                             </button>
-                        </div>
-                    @endif
+                        @endif
+                    </div>
                 </div>
 
                 <!-- Bonkauf -->
@@ -123,6 +220,7 @@
                     style="max-height: calc(100vh - 400px); overflow-y: auto;">
                     @foreach ($bandSearchResults as $band)
                         <div wire:click="selectBandFromSearch({{ $band->id }})"
+                            wire:loading.class="pointer-events-none opacity-75" wire:target="selectBandFromSearch"
                             class="cursor-pointer rounded-lg border border-gray-200 p-4 hover:border-purple-300 hover:bg-gray-50"
                             wire:key="band-search-{{ $band->id }}">
 
@@ -354,9 +452,17 @@
                                 <div class="xl:col-span-1">
                                     <div class="mb-2 text-sm font-medium text-gray-700">Status</div>
                                     <button wire:click="togglePresence({{ $person->id }})"
+                                        wire:loading.attr="disabled"
+                                        wire:loading.class="opacity-50 cursor-not-allowed"
+                                        wire:target="togglePresence"
                                         class="{{ $person->present ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-700' }} w-full rounded px-3 py-2 text-sm font-medium"
                                         title="{{ $person->present ? 'Als abwesend markieren' : 'Als anwesend markieren' }}">
-                                        {{ $person->present ? 'Anwesend' : 'Abwesend' }}
+                                        <span wire:loading.remove wire:target="togglePresence">
+                                            {{ $person->present ? 'Anwesend' : 'Abwesend' }}
+                                        </span>
+                                        <span wire:loading wire:target="togglePresence">
+                                            Wird gesetzt...
+                                        </span>
                                     </button>
                                     <!-- Kennzeichen Button -->
                                     <button wire:click="showVehiclePlates({{ $person->id }})"
@@ -387,6 +493,7 @@
                                             $nextAvailableDay = $this->getNextAvailableVoucherDay($person);
                                             $isSingleMode = $settings && $settings->isSingleVoucherMode();
                                             $voucherLabel = $settings ? $settings->getVoucherLabel() : 'Voucher';
+                                            $voucherLabel = 'Frei ' . $voucherLabel;
                                         @endphp
 
                                         @if ($nextAvailableDay)
@@ -404,9 +511,13 @@
 
                                             <button
                                                 wire:click="issueVouchers({{ $person->id }}, {{ $nextAvailableDay }})"
+                                                wire:loading.attr="disabled" wire:loading.class="opacity-50"
+                                                wire:target="issueVouchers"
                                                 class="w-full rounded bg-blue-500 px-3 py-2 text-sm text-white hover:bg-blue-600"
                                                 title="{{ $isSingleMode ? '1' : 'Alle verfügbaren' }} {{ $voucherLabel }} für {{ $dayLabel }} ausgeben">
-                                                {{ $buttonText }}
+                                                <span wire:loading.remove
+                                                    wire:target="issueVouchers">{{ $buttonText }}</span>
+                                                <span wire:loading wire:target="issueVouchers">💳...</span>
                                             </button>
 
                                             @if ($nextAvailableDay != $currentDay)
@@ -430,13 +541,13 @@
                                                         wire:click="purchasePersonVoucher({{ $person->id }}, 0.5)"
                                                         class="flex-1 rounded bg-green-500 px-2 py-1 text-xs text-white hover:bg-green-600"
                                                         title="0.5 Bon für {{ $person->full_name }} kaufen">
-                                                        0.5
+                                                        halber Bon
                                                     </button>
                                                     <button
                                                         wire:click="purchasePersonVoucher({{ $person->id }}, 1.0)"
                                                         class="flex-1 rounded bg-green-500 px-2 py-1 text-xs text-white hover:bg-green-600"
                                                         title="1.0 Bon für {{ $person->full_name }} kaufen">
-                                                        1.0
+                                                        ganzer Bon
                                                     </button>
                                                 </div>
                                             </div>
@@ -465,6 +576,7 @@
                     style="max-height: calc(100vh - 400px); overflow-y: auto;">
                     @foreach ($todaysBands as $band)
                         <div wire:click="selectBand({{ $band->id }})"
+                            wire:loading.class="pointer-events-none opacity-75" wire:target="selectBand"
                             class="{{ $selectedBand && $selectedBand->id === $band->id ? 'ring-2 ring-blue-500 bg-blue-50' : '' }} cursor-pointer rounded-lg border border-gray-200 p-4 hover:bg-gray-50">
 
                             <!-- NEU: Status-Badge oben rechts -->
@@ -633,8 +745,14 @@
                                         <td class="px-4 py-3 text-sm">{{ $member->last_name }}</td>
                                         <td class="px-4 py-3 text-sm">
                                             <button wire:click="togglePresence({{ $member->id }})"
+                                                wire:loading.attr="disabled"
+                                                wire:loading.class="opacity-50 cursor-not-allowed"
+                                                wire:target="togglePresence"
                                                 class="{{ $member->present ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-700' }} rounded px-2 py-1 text-xs">
-                                                {{ $member->present ? 'Ja' : 'Nein' }}
+                                                <span wire:loading.remove wire:target="togglePresence">
+                                                    {{ $member->present ? 'Ja' : 'Nein' }}
+                                                </span>
+                                                <span wire:loading wire:target="togglePresence">...</span>
                                             </button>
                                         </td>
                                         <td class="px-4 py-3 text-sm">
@@ -679,9 +797,13 @@
                                                     @endphp
                                                     <button
                                                         wire:click="issueVouchers({{ $member->id }}, {{ $nextAvailableDay }})"
+                                                        wire:loading.attr="disabled" wire:loading.class="opacity-50"
+                                                        wire:target="issueVouchers"
                                                         class="rounded bg-blue-500 px-2 py-1 text-xs text-white hover:bg-blue-600"
                                                         title="{{ $isSingleMode ? '1' : $availableCount }} {{ $voucherLabel }} ausgeben">
-                                                        {{ $buttonText }}
+                                                        <span wire:loading.remove
+                                                            wire:target="issueVouchers">{{ $buttonText }}</span>
+                                                        <span wire:loading wire:target="issueVouchers">💳</span>
                                                     </button>
                                                 @endif
 
@@ -841,8 +963,14 @@
                                         <td class="px-4 py-3 text-sm">{{ $member->last_name }}</td>
                                         <td class="px-4 py-3 text-sm">
                                             <button wire:click="togglePresence({{ $member->id }})"
+                                                wire:loading.attr="disabled"
+                                                wire:loading.class="opacity-50 cursor-not-allowed"
+                                                wire:target="togglePresence"
                                                 class="{{ $member->present ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-700' }} rounded px-2 py-1 text-xs">
-                                                {{ $member->present ? 'Ja' : 'Nein' }}
+                                                <span wire:loading.remove wire:target="togglePresence">
+                                                    {{ $member->present ? 'Ja' : 'Nein' }}
+                                                </span>
+                                                <span wire:loading wire:target="togglePresence">...</span>
                                             </button>
                                         </td>
                                         <td class="px-4 py-3 text-sm">
@@ -887,9 +1015,13 @@
                                                     @endphp
                                                     <button
                                                         wire:click="issueVouchers({{ $member->id }}, {{ $nextAvailableDay }})"
+                                                        wire:loading.attr="disabled" wire:loading.class="opacity-50"
+                                                        wire:target="issueVouchers"
                                                         class="rounded bg-blue-500 px-2 py-1 text-xs text-white hover:bg-blue-600"
                                                         title="{{ $isSingleMode ? '1' : $availableCount }} {{ $voucherLabel }} ausgeben">
-                                                        {{ $buttonText }}
+                                                        <span wire:loading.remove
+                                                            wire:target="issueVouchers">{{ $buttonText }}</span>
+                                                        <span wire:loading wire:target="issueVouchers">💳</span>
                                                     </button>
                                                 @endif
 
@@ -1194,6 +1326,29 @@
                 localStorage.setItem('backstage_purchase_stage_id', stageId);
             } else {
                 localStorage.removeItem('backstage_purchase_stage_id');
+            }
+        });
+        document.addEventListener('DOMContentLoaded', function() {
+            // Suchfeld-Funktionalität
+            const searchInput = document.getElementById('search-input');
+            const bandSearchInput = document.getElementById('band-search-input');
+
+            if (searchInput) {
+                searchInput.addEventListener('keydown', function(e) {
+                    if (e.key === 'Escape' && this.value.trim() !== '') {
+                        e.preventDefault();
+                        @this.call('clearSearch');
+                    }
+                });
+            }
+
+            if (bandSearchInput) {
+                bandSearchInput.addEventListener('keydown', function(e) {
+                    if (e.key === 'Escape' && this.value.trim() !== '') {
+                        e.preventDefault();
+                        @this.call('clearBandSearch');
+                    }
+                });
             }
         });
     </script>

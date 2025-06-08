@@ -44,36 +44,62 @@ class BackstageControl extends Component
 
     use ManagesVehiclePlates;
 
+    // Caching für bessere Performance
+    private $cachedSettings = null;
+    private $bandStatusCache = [];
+
     public function mount()
     {
         $this->stages = Stage::where('year', now()->year)->get();
-        $this->settings = Settings::current();
+        $this->settings = $this->getSettings();
         $this->currentDay = $this->getCurrentDay();
         $this->showBandList = false;
     }
 
-    // NEU: Band-Status für aktuellen Tag berechnen
+    // NEU: Settings mit Caching
+    private function getSettings()
+    {
+        if ($this->cachedSettings === null) {
+            $this->cachedSettings = Settings::current();
+        }
+        return $this->cachedSettings;
+    }
+
+    // NEU: Band-Status für aktuellen Tag berechnen (mit Caching)
     public function getBandStatusForToday($band)
     {
-        if (!$this->settings) {
-            return ['status' => 'unknown', 'class' => 'bg-gray-100 text-gray-700', 'text' => 'Unbekannt'];
+        $cacheKey = "band_status_{$band->id}_{$this->currentDay}";
+
+        if (isset($this->bandStatusCache[$cacheKey])) {
+            return $this->bandStatusCache[$cacheKey];
+        }
+
+        $settings = $this->getSettings();
+        if (!$settings) {
+            $status = ['status' => 'unknown', 'class' => 'bg-gray-100 text-gray-700', 'text' => 'Unbekannt'];
+            $this->bandStatusCache[$cacheKey] = $status;
+            return $status;
         }
 
         $currentDay = $this->currentDay;
 
         // Spielt die Band heute überhaupt?
         if (!$band->{"plays_day_$currentDay"}) {
-            return ['status' => 'not_today', 'class' => 'bg-gray-100 text-gray-700', 'text' => 'Spielt nicht heute'];
+            $status = ['status' => 'not_today', 'class' => 'bg-gray-100 text-gray-700', 'text' => 'Spielt nicht heute'];
+            $this->bandStatusCache[$cacheKey] = $status;
+            return $status;
         }
 
         // Auftrittszeit für heute holen
         $performanceTime = $band->getFormattedPerformanceTimeForDay($currentDay);
         if (!$performanceTime) {
-            return ['status' => 'no_time', 'class' => 'bg-yellow-100 text-yellow-700', 'text' => 'Keine Auftrittszeit'];
+            $status = ['status' => 'no_time', 'class' => 'bg-yellow-100 text-yellow-700', 'text' => 'Keine Auftrittszeit'];
+            $this->bandStatusCache[$cacheKey] = $status;
+            return $status;
         }
 
         // Späteste Ankunftszeit berechnen
-        $arrivalMinutes = $this->settings->getLatestArrivalTimeMinutes();
+        $arrivalMinutes = $settings->getLatestArrivalTimeMinutes();
         try {
             $performanceDateTime = \Carbon\Carbon::createFromFormat('H:i', $performanceTime);
             $latestArrivalTime = $performanceDateTime->subMinutes($arrivalMinutes);
@@ -83,32 +109,64 @@ class BackstageControl extends Component
             $allPresent = $band->all_present;
 
             if ($allPresent) {
-                return ['status' => 'ready', 'class' => 'bg-green-100 text-green-700 border-green-300', 'text' => '✓ Alle da'];
+                $status = ['status' => 'ready', 'class' => 'bg-green-100 text-green-700 border-green-300', 'text' => '✓ Alle da'];
+            } elseif ($now->gt($latestArrivalTime)) {
+                $status = ['status' => 'late', 'class' => 'bg-red-100 text-red-700 border-red-300', 'text' => '⚠ Zu spät!'];
+            } else {
+                // Noch Zeit, aber nicht alle da
+                $timeLeft = $now->diffInMinutes($latestArrivalTime);
+                if ($timeLeft <= 15) {
+                    $status = ['status' => 'warning', 'class' => 'bg-orange-100 text-orange-700 border-orange-300', 'text' => "⏰ {$timeLeft}min"];
+                } else {
+                    $status = ['status' => 'waiting', 'class' => 'bg-blue-100 text-blue-700', 'text' => 'Warten...'];
+                }
             }
-
-            // Ankunftszeit schon überschritten?
-            if ($now->gt($latestArrivalTime)) {
-                return ['status' => 'late', 'class' => 'bg-red-100 text-red-700 border-red-300', 'text' => '⚠ Zu spät!'];
-            }
-
-            // Noch Zeit, aber nicht alle da
-            $timeLeft = $now->diffInMinutes($latestArrivalTime);
-            if ($timeLeft <= 15) {
-                return ['status' => 'warning', 'class' => 'bg-orange-100 text-orange-700 border-orange-300', 'text' => "⏰ {$timeLeft}min"];
-            }
-
-            return ['status' => 'waiting', 'class' => 'bg-blue-100 text-blue-700', 'text' => 'Warten...'];
         } catch (\Exception $e) {
-            return ['status' => 'error', 'class' => 'bg-yellow-100 text-yellow-700', 'text' => 'Zeitfehler'];
+            $status = ['status' => 'error', 'class' => 'bg-yellow-100 text-yellow-700', 'text' => 'Zeitfehler'];
         }
+
+        $this->bandStatusCache[$cacheKey] = $status;
+        return $status;
     }
 
-    // PERSONEN-SUCHE (wie bisher)
+    // PERSONEN-SUCHE (optimiert)
     private function performPersonSearch()
     {
         $searchTerm = $this->search;
 
-        $query = Person::with(['band', 'group', 'subgroup', 'responsiblePerson', 'responsibleFor', 'vehiclePlates'])
+        // Nur die minimal nötigen Relationen und Felder laden
+        $query = Person::with([
+            'band:id,band_name',
+            'group:id,name',
+            'vehiclePlates:id,person_id,license_plate',
+            'responsiblePerson:id,first_name,last_name',
+            'responsibleFor:id,responsible_person_id'
+        ])
+            ->select([
+                'id',
+                'first_name',
+                'last_name',
+                'present',
+                'band_id',
+                'group_id',
+                'responsible_person_id',
+                'can_have_guests',
+                'remarks',
+                'year',
+                'is_duplicate',
+                'voucher_day_1',
+                'voucher_day_2',
+                'voucher_day_3',
+                'voucher_day_4',
+                'voucher_issued_day_1',
+                'voucher_issued_day_2',
+                'voucher_issued_day_3',
+                'voucher_issued_day_4',
+                'backstage_day_1',
+                'backstage_day_2',
+                'backstage_day_3',
+                'backstage_day_4'
+            ])
             ->where('year', now()->year)
             ->where('is_duplicate', false);
 
@@ -130,12 +188,34 @@ class BackstageControl extends Component
             ->get();
     }
 
-    // NEU: BAND-SUCHE
+    // NEU: BAND-SUCHE (optimiert)
     private function performBandSearch()
     {
         $searchTerm = $this->bandSearch;
 
-        return Band::with(['members', 'stage'])
+        return Band::with([
+            'stage:id,name',
+            'members' => function ($query) {
+                $query->select(['id', 'band_id', 'present'])
+                    ->where('year', now()->year)
+                    ->where('is_duplicate', false);
+            }
+        ])
+            ->select([
+                'id',
+                'band_name',
+                'stage_id',
+                'all_present',
+                'year',
+                'plays_day_1',
+                'plays_day_2',
+                'plays_day_3',
+                'plays_day_4',
+                'performance_time_day_1',
+                'performance_time_day_2',
+                'performance_time_day_3',
+                'performance_time_day_4'
+            ])
             ->where('year', now()->year)
             ->where('band_name', 'ILIKE', '%' . $searchTerm . '%')
             ->orderBy('band_name', 'asc')
@@ -143,16 +223,18 @@ class BackstageControl extends Component
             ->get();
     }
 
-    // NEU: Band-Suche Update Handler
+    // Band-Suche Update Handler (verbessert)
     public function updatedBandSearch()
     {
         if (strlen($this->bandSearch) >= 2) {
-            $this->bandSearchResults = $this->performBandSearch();
+            // Nur Suchergebnisse anzeigen wenn keine Band ausgewählt ist
+            if (!$this->selectedBandFromSearch) {
+                $this->bandSearchResults = $this->performBandSearch();
+            }
 
-            // Person-bezogene Daten zurücksetzen aber Band-Auswahl behalten
+            // Person-bezogene Daten zurücksetzen
             $this->selectedPerson = null;
             $this->searchResults = [];
-            // $this->selectedBandFromSearch = null; // ← Nur beim ersten Suchen
         } else {
             $this->bandSearchResults = [];
             // Nur zurücksetzen wenn keine Band ausgewählt ist
@@ -162,15 +244,17 @@ class BackstageControl extends Component
         }
     }
 
-    // Personen-Suche Update Handler (angepasst)
+    // Personen-Suche Update Handler (verbessert)
     public function updatedSearch()
     {
         if (strlen($this->search) >= 2) {
-            $this->searchResults = $this->performPersonSearch();
+            // Nur Suchergebnisse anzeigen wenn keine Band ausgewählt ist
+            if (!$this->selectedBandFromSearch) {
+                $this->searchResults = $this->performPersonSearch();
+            }
 
-            // Band-bezogene Suchdaten zurücksetzen, aber NICHT die ausgewählte Band
+            // Band-Suchergebnisse ausblenden
             $this->bandSearchResults = [];
-            // $this->selectedBandFromSearch = null; // ← NICHT zurücksetzen!
         } else {
             $this->searchResults = [];
             $this->selectedPerson = null;
@@ -262,6 +346,19 @@ class BackstageControl extends Component
         $this->bandMembers = [];
         $this->showBandList = false;
 
+        // JavaScript zum Leeren beider Input-Felder
+        $this->js('
+        const searchInput = document.getElementById("search-input");
+        const bandSearchInput = document.getElementById("band-search-input");
+        
+        if (searchInput) {
+            searchInput.value = "";
+        }
+        if (bandSearchInput) {
+            bandSearchInput.value = "";
+        }
+    ');
+
         $this->dispatch('search-cleared');
     }
 
@@ -305,13 +402,12 @@ class BackstageControl extends Component
             ->get();
     }
 
-    // Angepasste togglePresence Methode
+    // Optimierte togglePresence Methode
     public function togglePresence($personId)
     {
         $person = Person::find($personId);
         if (!$person) return;
 
-        $oldValue = $person->present;
         $person->present = !$person->present;
         $person->save();
 
@@ -320,43 +416,47 @@ class BackstageControl extends Component
             $person->band->updateAllPresentStatus();
         }
 
-        $this->forceRefresh();
+        // Cache für diese Band invalidieren
+        if ($person->band) {
+            $cacheKey = "band_status_{$person->band->id}_{$this->currentDay}";
+            unset($this->bandStatusCache[$cacheKey]);
+        }
+
+        $this->smartRefresh();
 
         session()->flash('success', $person->full_name . ' ist jetzt ' . ($person->present ? 'anwesend' : 'abwesend'));
     }
 
-    // Angepasste forceRefresh Methode
+    // NEU: Verbesserte Smart-Refresh-Methode
+    private function smartRefresh($preserveSearch = true)
+    {
+        // Wenn eine Band aus der Suche ausgewählt ist, keine Suchergebnisse anzeigen
+        if ($this->selectedBandFromSearch) {
+            // Suchergebnisse ausblenden da Band-Detail-Ansicht aktiv ist
+            $this->bandSearchResults = [];
+            $this->searchResults = [];
+
+            // Nur Band-Mitglieder neu laden (für Status Updates)
+            $this->loadBandMembersFromSearch();
+            return; // Früh beenden, keine weiteren Suchen
+        }
+
+        // Nur bei Bedarf Suchergebnisse aktualisieren (wenn keine Band ausgewählt)
+        if ($preserveSearch) {
+            if ($this->search && strlen($this->search) >= 2) {
+                $this->searchResults = $this->performPersonSearch();
+            }
+
+            if ($this->bandSearch && strlen($this->bandSearch) >= 2) {
+                $this->bandSearchResults = $this->performBandSearch();
+            }
+        }
+    }
+
+    // Legacy forceRefresh für Kompatibilität (ruft jetzt smartRefresh auf)
     private function forceRefresh()
     {
-        // Merke dir die aktuell ausgewählte Band aus der Suche
-        $keepSelectedBandFromSearch = $this->selectedBandFromSearch;
-
-        $this->searchResults = [];
-        $this->bandSearchResults = [];
-        $this->selectedPerson = null;
-        // $this->selectedBandFromSearch = null; // ← NICHT zurücksetzen!
-        $this->selectedBand = null;
-
-        // Erneut suchen falls Suchbegriffe vorhanden
-        if ($this->search && strlen($this->search) >= 2) {
-            usleep(10000);
-            $this->searchResults = $this->performPersonSearch();
-        }
-
-        if ($this->bandSearch && strlen($this->bandSearch) >= 2) {
-            usleep(10000);
-            $this->bandSearchResults = $this->performBandSearch();
-        }
-
-        // Wenn eine Band aus der Suche ausgewählt war, Mitglieder neu laden
-        if ($keepSelectedBandFromSearch) {
-            $this->selectedBandFromSearch = $keepSelectedBandFromSearch;
-            $this->loadBandMembersFromSearch();
-        } else {
-            $this->bandMembers = [];
-        }
-
-        $this->dispatch('refresh-component');
+        $this->smartRefresh();
     }
 
     public function showGuests($personId)
@@ -429,13 +529,15 @@ class BackstageControl extends Component
         return in_array($mode, ['stage_only', 'both']);
     }
 
+    // Optimierte issueVouchers Methode
     public function issueVouchers($personId, $day)
     {
         $person = Person::find($personId);
         if (!$person) return;
 
-        if (!$this->settings || !$this->settings->canIssueVouchersForDay($day, $this->currentDay)) {
-            $dayLabel = $this->settings ? $this->settings->getDayLabel($day) : "Tag $day";
+        $settings = $this->getSettings();
+        if (!$settings || !$settings->canIssueVouchersForDay($day, $this->currentDay)) {
+            $dayLabel = $settings ? $settings->getDayLabel($day) : "Tag $day";
             session()->flash('error', "Voucher für $dayLabel können aktuell nicht ausgegeben werden!");
             return;
         }
@@ -447,7 +549,7 @@ class BackstageControl extends Component
         }
 
         $vouchersToIssue = 1;
-        if ($this->settings && !$this->settings->isSingleVoucherMode()) {
+        if ($settings && !$settings->isSingleVoucherMode()) {
             $vouchersToIssue = $availableVouchers;
         }
 
@@ -459,11 +561,12 @@ class BackstageControl extends Component
         $success = $person->save();
 
         if ($success) {
-            $this->forceRefresh();
+            // Nur gezieltes Update statt kompletter Refresh
+            $this->smartRefresh();
 
-            $voucherLabel = $this->settings ? $this->settings->getVoucherLabel() : 'Voucher';
-            $dayLabel = $this->settings ? $this->settings->getDayLabel($day) : "Tag $day";
-            $currentDayLabel = $this->settings ? $this->settings->getDayLabel($this->currentDay) : "Tag {$this->currentDay}";
+            $voucherLabel = $settings ? $settings->getVoucherLabel() : 'Voucher';
+            $dayLabel = $settings ? $settings->getDayLabel($day) : "Tag $day";
+            $currentDayLabel = $settings ? $settings->getDayLabel($this->currentDay) : "Tag {$this->currentDay}";
 
             if ($day != $this->currentDay) {
                 session()->flash('success', "$vouchersToIssue $voucherLabel ($dayLabel) heute ($currentDayLabel) für " . $person->full_name . " ausgegeben!");
@@ -683,5 +786,60 @@ class BackstageControl extends Component
             'todaysBands' => $todaysBands,
             'currentDayDate' => $this->settings ? $this->settings->{"day_{$this->currentDay}_date"} : null,
         ]);
+    }
+
+    public function clearSearch()
+    {
+        $this->search = '';
+        $this->searchResults = [];
+        $this->selectedPerson = null;
+
+        $this->js('
+        const input = document.getElementById("search-input");
+        if (input) {
+            input.value = "";
+            input.focus();
+        }
+    ');
+    }
+
+    public function clearBandSearch()
+    {
+        $this->bandSearch = '';
+        $this->bandSearchResults = [];
+        $this->selectedBandFromSearch = null;
+        $this->bandMembers = [];
+
+        $this->js('
+        const input = document.getElementById("band-search-input");
+        if (input) {
+            input.value = "";
+            input.focus();
+        }
+    ');
+    }
+
+    public function focusSearch()
+    {
+        $this->js('
+        setTimeout(() => {
+            const input = document.getElementById("search-input");
+            if (input && input.value.trim() !== "") {
+                input.select();
+            }
+        }, 10);
+    ');
+    }
+
+    public function focusBandSearch()
+    {
+        $this->js('
+        setTimeout(() => {
+            const input = document.getElementById("band-search-input");
+            if (input && input.value.trim() !== "") {
+                input.select();
+            }
+        }, 10);
+    ');
     }
 }

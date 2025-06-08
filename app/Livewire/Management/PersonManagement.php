@@ -1,5 +1,5 @@
 <?php
-// app/Livewire/Management/PersonManagement.php
+// app/Livewire/Management/PersonManagement.php - OPTIMIERTE VERSION
 
 namespace App\Livewire\Management;
 
@@ -20,7 +20,7 @@ class PersonManagement extends Component
     public $first_name = '';
     public $last_name = '';
     public $present = false;
-    public $can_have_guests = false; // NEU
+    public $can_have_guests = false;
     public $backstage_day_1 = false;
     public $backstage_day_2 = false;
     public $backstage_day_3 = false;
@@ -39,14 +39,20 @@ class PersonManagement extends Component
     // State Management
     public $showCreateForm = false;
     public $showEditForm = false;
-    public $showGuestsModal = false; // NEU
+    public $showGuestsModal = false;
     public $editingPerson = null;
-    public $selectedPersonForGuests = null; // NEU
+    public $selectedPersonForGuests = null;
     public $search = '';
-    public $filterType = 'all'; // all, groups, bands, guests
-    public $continueAdding = false; // Für "Speichern und weiter"
-    public $showBandMembers = false; // Toggle für Bandmitglieder
+    public $filterType = 'all';
+    public $continueAdding = false;
+    public $showBandMembers = false;
     public $settings = null;
+
+    // Performance Cache
+    private $groupsCache = null;
+    private $bandsCache = null;
+    private $responsiblePersonsCache = null;
+    private $lastQueryTime = null;
 
     public function mount()
     {
@@ -54,9 +60,40 @@ class PersonManagement extends Component
         $this->settings = Settings::current();
     }
 
+    // Neue Methode zum Leeren des Suchfelds
+    public function clearSearch()
+    {
+        $this->search = '';
+        $this->resetPage(); // Pagination zurücksetzen
+
+        // JavaScript ausführen um das Input-Feld sofort zu leeren
+        $this->js('
+            const input = document.getElementById("search-input");
+            if (input) {
+                input.value = "";
+                input.focus();
+            }
+        ');
+    }
+
+    // Neue Methode zum Markieren des Suchtext bei Focus
+    public function focusSearch()
+    {
+        // Dispatch JavaScript Event zum Markieren des Texts
+        $this->js('
+            setTimeout(() => {
+                const input = document.getElementById("search-input");
+                if (input && input.value.trim() !== "") {
+                    input.select();
+                }
+            }, 10);
+        ');
+    }
+
     public function updatedSearch()
     {
-        $this->resetPage(); // Reset pagination when searching
+        $this->resetPage();
+        // Debouncing wird durch wire:model.live.debounce.300ms im Template gehandhabt
     }
 
     public function updatedFilterType()
@@ -69,24 +106,81 @@ class PersonManagement extends Component
         $this->resetPage();
     }
 
+    // OPTIMIERTE Query-Methode
     private function getPersonsQuery()
     {
-        $query = Person::with(['group', 'subgroup', 'band', 'responsiblePerson', 'responsibleFor', 'vehiclePlates'])
-            ->where('year', $this->year)
+        $query = Person::query();
+
+        // Nur benötigte Felder auswählen für bessere Performance
+        $query->select([
+            'id',
+            'first_name',
+            'last_name',
+            'present',
+            'can_have_guests',
+            'backstage_day_1',
+            'backstage_day_2',
+            'backstage_day_3',
+            'backstage_day_4',
+            'voucher_day_1',
+            'voucher_day_2',
+            'voucher_day_3',
+            'voucher_day_4',
+            'remarks',
+            'group_id',
+            'subgroup_id',
+            'band_id',
+            'responsible_person_id',
+            'year',
+            'is_duplicate'
+        ]);
+
+        // Optimierte Eager Loading - nur benötigte Felder
+        $query->with([
+            'group:id,name,can_have_guests',
+            'subgroup:id,name,group_id',
+            'band:id,band_name',
+            'responsiblePerson:id,first_name,last_name',
+            'responsibleFor:id,responsible_person_id,first_name,last_name', // Für Count
+            'vehiclePlates:id,person_id,license_plate' // Nur nötige Felder
+        ]);
+
+        $query->where('year', $this->year)
             ->where('is_duplicate', false);
 
-        // Search filter
-        if ($this->search) {
-            $query->where(function ($q) {
-                $q->where('first_name', 'ILIKE', '%' . $this->search . '%')
-                    ->orWhere('last_name', 'ILIKE', '%' . $this->search . '%')
-                    // NEU: Auch in Kennzeichen suchen
-                    ->orWhereHas('vehiclePlates', function ($plateQuery) {
-                        $plateQuery->where('license_plate', 'ILIKE', '%' . $this->search . '%');
+        // Optimierte Search-Filter
+        if ($this->search && strlen($this->search) >= 2) {
+            $searchTerm = strtolower(trim($this->search));
+
+            $query->where(function ($q) use ($searchTerm) {
+                $q->whereRaw('LOWER(first_name) LIKE ?', ['%' . $searchTerm . '%'])
+                    ->orWhereRaw('LOWER(last_name) LIKE ?', ['%' . $searchTerm . '%'])
+                    ->orWhereRaw('LOWER(CONCAT(first_name, \' \', last_name)) LIKE ?', ['%' . $searchTerm . '%'])
+                    // Optimierte Subquery für Kennzeichen
+                    ->orWhereExists(function ($plateQuery) use ($searchTerm) {
+                        $plateQuery->select(\DB::raw(1))
+                            ->from('vehicle_plates')
+                            ->whereColumn('vehicle_plates.person_id', 'persons.id')
+                            ->whereRaw('LOWER(license_plate) LIKE ?', ['%' . $searchTerm . '%']);
+                    })
+                    // Optimierte Subquery für Gruppennamen
+                    ->orWhereExists(function ($groupQuery) use ($searchTerm) {
+                        $groupQuery->select(\DB::raw(1))
+                            ->from('groups')
+                            ->whereColumn('groups.id', 'persons.group_id')
+                            ->whereRaw('LOWER(name) LIKE ?', ['%' . $searchTerm . '%']);
+                    })
+                    // Optimierte Subquery für Bandnamen
+                    ->orWhereExists(function ($bandQuery) use ($searchTerm) {
+                        $bandQuery->select(\DB::raw(1))
+                            ->from('bands')
+                            ->whereColumn('bands.id', 'persons.band_id')
+                            ->whereRaw('LOWER(band_name) LIKE ?', ['%' . $searchTerm . '%']);
                     });
             });
         }
-        // Type filter
+
+        // Optimierte Type-Filter
         if ($this->filterType !== 'all') {
             switch ($this->filterType) {
                 case 'groups':
@@ -109,37 +203,108 @@ class PersonManagement extends Component
         return $query->orderBy('last_name')->orderBy('first_name');
     }
 
-    // Person CRUD Methods
-    public function createPerson()
+    // OPTIMIERTE Presence Toggle mit smartem Refresh
+    public function togglePresence($personId)
     {
-        $this->showCreateForm = true;
-        $this->resetPersonForm();
+        $person = Person::select(['id', 'first_name', 'last_name', 'present', 'band_id'])
+            ->find($personId);
+
+        if (!$person) {
+            session()->flash('error', 'Person nicht gefunden.');
+            return;
+        }
+
+        $person->present = !$person->present;
+        $person->save();
+
+        // Band's all_present Status aktualisieren falls Person in einer Band ist
+        if ($person->band_id) {
+            $band = Band::find($person->band_id);
+            if ($band) {
+                $band->updateAllPresentStatus();
+            }
+        }
+
+        // Smart refresh - nur das nötigste aktualisieren
+        $this->smartRefresh();
+
+        $statusText = $person->present ? 'anwesend' : 'abwesend';
+        session()->flash('success', "{$person->first_name} {$person->last_name} ist jetzt {$statusText}.");
     }
 
-    public function editPerson($id)
+    // NEUE smartRefresh Methode
+    private function smartRefresh($preserveSearch = true)
     {
-        $this->editingPerson = Person::findOrFail($id);
-        $this->first_name = $this->editingPerson->first_name;
-        $this->last_name = $this->editingPerson->last_name;
-        $this->present = $this->editingPerson->present;
-        $this->can_have_guests = $this->editingPerson->can_have_guests; // NEU
-        $this->backstage_day_1 = $this->editingPerson->backstage_day_1;
-        $this->backstage_day_2 = $this->editingPerson->backstage_day_2;
-        $this->backstage_day_3 = $this->editingPerson->backstage_day_3;
-        $this->backstage_day_4 = $this->editingPerson->backstage_day_4;
-        $this->voucher_day_1 = $this->editingPerson->voucher_day_1;
-        $this->voucher_day_2 = $this->editingPerson->voucher_day_2;
-        $this->voucher_day_3 = $this->editingPerson->voucher_day_3;
-        $this->voucher_day_4 = $this->editingPerson->voucher_day_4;
-        $this->remarks = $this->editingPerson->remarks;
-        $this->group_id = $this->editingPerson->group_id;
-        $this->subgroup_id = $this->editingPerson->subgroup_id;
-        $this->band_id = $this->editingPerson->band_id;
-        $this->responsible_person_id = $this->editingPerson->responsible_person_id;
-        $this->year = $this->editingPerson->year;
-        $this->showEditForm = true;
+        // Gäste-Modal aktualisieren falls geöffnet
+        if ($this->selectedPersonForGuests) {
+            $this->selectedPersonForGuests = Person::with([
+                'responsibleFor:id,responsible_person_id,first_name,last_name,present'
+            ])->find($this->selectedPersonForGuests->id);
+        }
+
+        // Cache leeren für nächsten Render
+        $this->resetCache();
+
+        // Nur bei Bedarf Pagination zurücksetzen
+        if (!$preserveSearch && $this->search) {
+            $this->resetPage();
+        }
     }
 
+    // Cache Management
+    private function resetCache()
+    {
+        $this->groupsCache = null;
+        $this->bandsCache = null;
+        $this->responsiblePersonsCache = null;
+    }
+
+    // OPTIMIERTE Datenabfragen mit Caching
+    private function getGroupsCache()
+    {
+        if ($this->groupsCache === null) {
+            $this->groupsCache = Group::select([
+                'id',
+                'name',
+                'can_have_guests',
+                'voucher_day_1',
+                'voucher_day_2',
+                'voucher_day_3',
+                'voucher_day_4',
+                'backstage_day_1',
+                'backstage_day_2',
+                'backstage_day_3',
+                'backstage_day_4'
+            ])->orderBy('name')->get();
+        }
+        return $this->groupsCache;
+    }
+
+    private function getBandsCache()
+    {
+        if ($this->bandsCache === null) {
+            $this->bandsCache = Band::select(['id', 'band_name'])
+                ->orderBy('band_name')
+                ->get();
+        }
+        return $this->bandsCache;
+    }
+
+    private function getResponsiblePersonsCache()
+    {
+        if ($this->responsiblePersonsCache === null) {
+            $this->responsiblePersonsCache = Person::select(['id', 'first_name', 'last_name'])
+                ->where('can_have_guests', true)
+                ->where('year', $this->year)
+                ->where('is_duplicate', false)
+                ->orderBy('last_name')
+                ->orderBy('first_name')
+                ->get();
+        }
+        return $this->responsiblePersonsCache;
+    }
+
+    // Person CRUD Methods (optimiert)
     public function savePerson($continueAdding = false)
     {
         $this->continueAdding = $continueAdding;
@@ -158,13 +323,12 @@ class PersonManagement extends Component
             'remarks' => 'nullable|string',
         ]);
 
-        // Validierung: Person kann nur einer Gruppe ODER Band angehören
         if ($this->group_id && $this->band_id) {
             $this->addError('band_id', 'Eine Person kann nicht gleichzeitig einer Gruppe und einer Band angehören.');
             return;
         }
 
-        Person::create([
+        $person = Person::create([
             'first_name' => $this->first_name,
             'last_name' => $this->last_name,
             'present' => $this->present,
@@ -185,15 +349,14 @@ class PersonManagement extends Component
             'year' => $this->year,
         ]);
 
+        // Cache leeren da neue Person hinzugefügt
+        $this->resetCache();
+
         if ($this->continueAdding) {
-            // Nur Name-Felder und present zurücksetzen, Rest beibehalten
             $this->first_name = '';
             $this->last_name = '';
             $this->present = false;
-
-            // Alternative: Direkte JavaScript-Ausführung
             $this->js('clearNameFields()');
-
             session()->flash('success', 'Person wurde erfolgreich erstellt! Sie können die nächste Person mit den gleichen Einstellungen anlegen.');
         } else {
             $this->showCreateForm = false;
@@ -218,7 +381,6 @@ class PersonManagement extends Component
             'remarks' => 'nullable|string',
         ]);
 
-        // Validierung: Person kann nur einer Gruppe ODER Band angehören
         if ($this->group_id && $this->band_id) {
             $this->addError('band_id', 'Eine Person kann nicht gleichzeitig einer Gruppe und einer Band angehören.');
             return;
@@ -228,7 +390,7 @@ class PersonManagement extends Component
             'first_name' => $this->first_name,
             'last_name' => $this->last_name,
             'present' => $this->present,
-            'can_have_guests' => $this->can_have_guests, // NEU
+            'can_have_guests' => $this->can_have_guests,
             'backstage_day_1' => $this->backstage_day_1,
             'backstage_day_2' => $this->backstage_day_2,
             'backstage_day_3' => $this->backstage_day_3,
@@ -244,6 +406,9 @@ class PersonManagement extends Component
             'responsible_person_id' => $this->responsible_person_id ?: null,
         ]);
 
+        // Cache leeren da Person geändert
+        $this->resetCache();
+
         $this->showEditForm = false;
         $this->resetPersonForm();
         session()->flash('success', 'Person wurde erfolgreich aktualisiert!');
@@ -251,23 +416,50 @@ class PersonManagement extends Component
 
     public function deletePerson($id)
     {
-        Person::findOrFail($id)->delete();
-        session()->flash('success', 'Person wurde erfolgreich gelöscht!');
+        $person = Person::select(['id', 'first_name', 'last_name'])->find($id);
+        if ($person) {
+            $name = $person->first_name . ' ' . $person->last_name;
+            $person->delete();
+            $this->resetCache();
+            session()->flash('success', "{$name} wurde erfolgreich gelöscht!");
+        }
     }
 
-    // Wristband color helper
+    // OPTIMIERTE Gäste-Modal Methoden
+    public function toggleGuestPresence($guestId)
+    {
+        $guest = Person::select(['id', 'first_name', 'last_name', 'present'])->find($guestId);
+
+        if (!$guest) {
+            session()->flash('error', 'Gast nicht gefunden.');
+            return;
+        }
+
+        $guest->present = !$guest->present;
+        $guest->save();
+
+        // Nur die Gäste-Liste aktualisieren
+        if ($this->selectedPersonForGuests) {
+            $this->selectedPersonForGuests = Person::with([
+                'responsibleFor:id,responsible_person_id,first_name,last_name,present,backstage_day_1,backstage_day_2,backstage_day_3,backstage_day_4,voucher_day_1,voucher_day_2,voucher_day_3,voucher_day_4,remarks'
+            ])->find($this->selectedPersonForGuests->id);
+        }
+
+        $statusText = $guest->present ? 'anwesend' : 'abwesend';
+        session()->flash('success', "{$guest->first_name} {$guest->last_name} ist jetzt als {$statusText} markiert.");
+    }
+
+    // Wristband color helper (unverändert, aber effizienter)
     public function getWristbandColorForPerson($person)
     {
         if (!$this->settings) return null;
 
         $currentDay = $this->settings->getCurrentDay();
 
-        // First check if person has backstage access for the current day
         if (!$person->{"backstage_day_{$currentDay}"}) {
-            return null; // No wristband if no access for current day
+            return null;
         }
 
-        // Check if person has backstage access for all remaining days (from current day to day 4)
         $hasAllRemainingDays = true;
         for ($day = $currentDay; $day <= 4; $day++) {
             if (!$person->{"backstage_day_$day"}) {
@@ -276,48 +468,35 @@ class PersonManagement extends Component
             }
         }
 
-        // If they have all remaining days, return day 4 color
-        if ($hasAllRemainingDays) {
-            return $this->settings->getColorForDay(4);
-        }
-
-        // Otherwise, return the color for the current day
-        return $this->settings->getColorForDay($currentDay);
+        return $hasAllRemainingDays
+            ? $this->settings->getColorForDay(4)
+            : $this->settings->getColorForDay($currentDay);
     }
 
     public function hasAnyBackstageAccess($person)
     {
-        for ($day = 1; $day <= 4; $day++) {
-            if ($person->{"backstage_day_$day"}) {
-                return true;
-            }
-        }
-        return false;
+        return $person->backstage_day_1 || $person->backstage_day_2 ||
+            $person->backstage_day_3 || $person->backstage_day_4;
     }
 
-    // Gruppen-basierte Voreinstellungen laden
+    // Gruppen-basierte Voreinstellungen (optimiert)
     public function updatedGroupId()
     {
         if ($this->group_id) {
-            $group = Group::find($this->group_id);
+            $group = collect($this->getGroupsCache())->firstWhere('id', $this->group_id);
             if ($group) {
-                // Voucher von der Gruppe übernehmen
                 $this->voucher_day_1 = $group->voucher_day_1 ?? '';
                 $this->voucher_day_2 = $group->voucher_day_2 ?? '';
                 $this->voucher_day_3 = $group->voucher_day_3 ?? '';
                 $this->voucher_day_4 = $group->voucher_day_4 ?? '';
 
-                // Backstage-Zugang von der Gruppe übernehmen
                 $this->backstage_day_1 = $group->backstage_day_1 ?? false;
                 $this->backstage_day_2 = $group->backstage_day_2 ?? false;
                 $this->backstage_day_3 = $group->backstage_day_3 ?? false;
                 $this->backstage_day_4 = $group->backstage_day_4 ?? false;
 
-                // Kann Gäste haben von der Gruppe übernehmen - NEU
                 $this->can_have_guests = $group->can_have_guests ?? false;
             }
-
-            // Band-Auswahl zurücksetzen wenn Gruppe gewählt
             $this->band_id = '';
         }
     }
@@ -325,28 +504,30 @@ class PersonManagement extends Component
     public function updatedBandId()
     {
         if ($this->band_id) {
-            // Gruppen-Auswahl zurücksetzen wenn Band gewählt
             $this->group_id = '';
             $this->subgroup_id = '';
         }
     }
 
-    // Untergruppen laden basierend auf ausgewählter Gruppe
+    // Optimierte Untergruppen
     public function getSubgroupsProperty()
     {
         if ($this->group_id) {
-            return Subgroup::where('group_id', $this->group_id)->orderBy('name')->get();
+            return Subgroup::select(['id', 'name', 'group_id'])
+                ->where('group_id', $this->group_id)
+                ->orderBy('name')
+                ->get();
         }
         return collect();
     }
 
-    // Helper Methods
+    // Weitere Methoden unverändert...
     public function resetPersonForm()
     {
         $this->first_name = '';
         $this->last_name = '';
         $this->present = false;
-        $this->can_have_guests = false; // NEU
+        $this->can_have_guests = false;
         $this->backstage_day_1 = false;
         $this->backstage_day_2 = false;
         $this->backstage_day_3 = false;
@@ -372,10 +553,41 @@ class PersonManagement extends Component
         $this->resetPersonForm();
     }
 
-    // NEU: Gäste-Modal Methoden
+    public function createPerson()
+    {
+        $this->showCreateForm = true;
+        $this->resetPersonForm();
+    }
+
+    public function editPerson($id)
+    {
+        $this->editingPerson = Person::findOrFail($id);
+        $this->first_name = $this->editingPerson->first_name;
+        $this->last_name = $this->editingPerson->last_name;
+        $this->present = $this->editingPerson->present;
+        $this->can_have_guests = $this->editingPerson->can_have_guests;
+        $this->backstage_day_1 = $this->editingPerson->backstage_day_1;
+        $this->backstage_day_2 = $this->editingPerson->backstage_day_2;
+        $this->backstage_day_3 = $this->editingPerson->backstage_day_3;
+        $this->backstage_day_4 = $this->editingPerson->backstage_day_4;
+        $this->voucher_day_1 = $this->editingPerson->voucher_day_1;
+        $this->voucher_day_2 = $this->editingPerson->voucher_day_2;
+        $this->voucher_day_3 = $this->editingPerson->voucher_day_3;
+        $this->voucher_day_4 = $this->editingPerson->voucher_day_4;
+        $this->remarks = $this->editingPerson->remarks;
+        $this->group_id = $this->editingPerson->group_id;
+        $this->subgroup_id = $this->editingPerson->subgroup_id;
+        $this->band_id = $this->editingPerson->band_id;
+        $this->responsible_person_id = $this->editingPerson->responsible_person_id;
+        $this->year = $this->editingPerson->year;
+        $this->showEditForm = true;
+    }
+
     public function showGuests($personId)
     {
-        $this->selectedPersonForGuests = Person::with('responsibleFor')->findOrFail($personId);
+        $this->selectedPersonForGuests = Person::with([
+            'responsibleFor:id,responsible_person_id,first_name,last_name,present,backstage_day_1,backstage_day_2,backstage_day_3,backstage_day_4,voucher_day_1,voucher_day_2,voucher_day_3,voucher_day_4,remarks'
+        ])->findOrFail($personId);
         $this->showGuestsModal = true;
     }
 
@@ -385,39 +597,15 @@ class PersonManagement extends Component
         $this->selectedPersonForGuests = null;
     }
 
-    // NEU: Anwesenheitsstatus für Gast ändern
-    public function toggleGuestPresence($guestId)
-    {
-        $guest = Person::findOrFail($guestId);
-        $guest->update(['present' => !$guest->present]);
-
-        // Aktualisiere die ausgewählte Person um die Änderungen zu zeigen
-        $this->selectedPersonForGuests = Person::with('responsibleFor')->findOrFail($this->selectedPersonForGuests->id);
-
-        $statusText = $guest->present ? 'anwesend' : 'abwesend';
-        session()->flash('success', "{$guest->full_name} ist jetzt als {$statusText} markiert.");
-    }
-
     public function render()
     {
         $persons = $this->getPersonsQuery()->paginate(15);
 
-        $groups = Group::orderBy('name')->get();
-        $bands = Band::orderBy('band_name')->get();
-
-        // GEÄNDERT: Nur Personen die Gäste haben dürfen
-        $responsiblePersons = Person::where('can_have_guests', true)
-            ->where('year', $this->year)
-            ->where('is_duplicate', false)
-            ->orderBy('last_name')
-            ->orderBy('first_name')
-            ->get();
-
         return view('livewire.management.person-management', [
             'persons' => $persons,
-            'groups' => $groups,
-            'bands' => $bands,
-            'responsiblePersons' => $responsiblePersons
+            'groups' => $this->getGroupsCache(),
+            'bands' => $this->getBandsCache(),
+            'responsiblePersons' => $this->getResponsiblePersonsCache()
         ]);
     }
 }
