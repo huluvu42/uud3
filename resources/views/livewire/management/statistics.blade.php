@@ -214,7 +214,7 @@
                                                         </span>
                                                     </div>
                                                     <div class="text-xs text-gray-500">
-                                                        A / K
+                                                        F / K
                                                     </div>
                                                 </div>
                                             </td>
@@ -229,7 +229,7 @@
                                                         class="text-purple-600">{{ number_format($stat['total_purchased'], 1) }}</span>
                                                 </div>
                                                 <div class="text-xs text-gray-500">
-                                                    A / K
+                                                    F / K
                                                 </div>
                                             </div>
                                         </td>
