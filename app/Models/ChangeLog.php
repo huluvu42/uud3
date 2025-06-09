@@ -7,14 +7,19 @@ use Illuminate\Database\Eloquent\Model;
 class ChangeLog extends Model
 {
     protected $fillable = [
-        'table_name', 'record_id', 'field_name', 
-        'old_value', 'new_value', 'action', 'user_id'
+        'table_name',
+        'record_id',
+        'field_name',
+        'old_value',
+        'new_value',
+        'action',
+        'user_id'
     ];
 
-    // ✅ Verwende normale Laravel timestamps
+    // Verwende normale Laravel timestamps
     public $timestamps = true;
-    
-    // ✅ Aber deaktiviere updated_at (wird nicht benötigt)
+
+    // Aber deaktiviere updated_at (wird nicht benötigt)
     const UPDATED_AT = null;
 
     public function user()

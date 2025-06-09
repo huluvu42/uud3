@@ -1,80 +1,4 @@
-@script
-    <script>
-        // Performance Optimierungen
-        let clickTimeout = null;
-
-        // Verhindere Spam-Klicks
-        document.addEventListener('click', function(e) {
-            if (e.target.matches('[wire\\:click*="togglePresence"]') ||
-                e.target.matches('[wire\\:click*="issueVouchers"]') ||
-                e.target.closest('[wire\\:click*="togglePresence"]') ||
-                e.target.closest('[wire\\:click*="issueVouchers"]')) {
-
-                if (clickTimeout) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false;
-                }
-
-                clickTimeout = setTimeout(() => {
-                    clickTimeout = null;
-                }, 1000); // 1 Sekunde Sperre
-            }
-        });
-
-        // Loading States visuell verbessern
-        window.addEventListener('livewire:request', () => {
-            document.body.style.cursor = 'wait';
-        });
-
-        window.addEventListener('livewire:response', () => {
-            document.body.style.cursor = 'default';
-        });
-
-        $wire.on('search-cleared', () => {
-            const searchInput = document.querySelector('input[wire\\:model\\.live\\.debounce\\.500ms="search"]');
-            const bandSearchInput = document.querySelector(
-                'input[wire\\:model\\.live\\.debounce\\.500ms="bandSearch"]');
-
-            if (searchInput) {
-                searchInput.value = '';
-                searchInput.dispatchEvent(new Event('input', {
-                    bubbles: true
-                }));
-            }
-
-            if (bandSearchInput) {
-                bandSearchInput.value = '';
-                bandSearchInput.dispatchEvent(new Event('input', {
-                    bubbles: true
-                }));
-            }
-        });
-
-        $wire.on('refresh-component', () => {
-            // Weniger aggressive DOM-Updates
-            // window.Livewire.find($wire.__instance.id).call('$refresh');
-        });
-
-        // LocalStorage für Bühnenauswahl
-        window.addEventListener('DOMContentLoaded', function() {
-            // Beim Laden der Seite gespeicherte Bühne laden
-            const savedStageId = localStorage.getItem('backstage_purchase_stage_id');
-            if (savedStageId && savedStageId !== 'null') {
-                $wire.set('purchaseStageId', parseInt(savedStageId));
-            }
-        });
-
-        // Livewire Event Listener für Stage-Änderungen
-        $wire.on('stage-selected', (stageId) => {
-            if (stageId && stageId !== null) {
-                localStorage.setItem('backstage_purchase_stage_id', stageId);
-            } else {
-                localStorage.removeItem('backstage_purchase_stage_id');
-            }
-        });
-    </script>
-@endscript{{-- resources/views/livewire/backstage-control.blade.php --}}
+{{-- resources/views/livewire/backstage-control.blade.php --}}
 
 <div class="container mx-auto px-4 py-8">
     @include('partials.navigation')
@@ -82,14 +6,29 @@
     <div class="mx-auto mt-6 max-w-7xl">
         <!-- Flash Messages -->
         @if (session()->has('success'))
-            <div class="mb-4 rounded border border-green-400 bg-green-100 px-4 py-3 text-green-700">
-                {{ session('success') }}
+            <div class="mb-4 rounded border border-green-400 bg-green-100 px-4 py-3 text-green-700 shadow-sm">
+                <div class="flex items-center">
+                    <span class="mr-2">✅</span>
+                    {{ session('success') }}
+                </div>
             </div>
         @endif
 
         @if (session()->has('error'))
-            <div class="mb-4 rounded border border-red-400 bg-red-100 px-4 py-3 text-red-700">
-                {{ session('error') }}
+            <div class="mb-4 rounded border border-red-400 bg-red-100 px-4 py-3 text-red-700 shadow-sm">
+                <div class="flex items-center">
+                    <span class="mr-2">❌</span>
+                    {{ session('error') }}
+                </div>
+            </div>
+        @endif
+
+        @if (session()->has('info'))
+            <div class="mb-4 rounded border border-blue-400 bg-blue-100 px-4 py-3 text-blue-700 shadow-sm">
+                <div class="flex items-center">
+                    <span class="mr-2">ℹ️</span>
+                    <pre class="text-xs">{{ session('info') }}</pre>
+                </div>
             </div>
         @endif
 
@@ -183,12 +122,21 @@
                         @endphp
                         @if ($selectedStageObj)
                             @php $soldToday = $this->getSoldVouchersForStage($purchaseStageId, $currentDay); @endphp
-                            <div class="mt-2 rounded border bg-blue-50 p-2 text-xs text-gray-600">
-                                <strong>{{ $selectedStageObj->name }}</strong><br>
-                                Heute: {{ $soldToday }} {{ $settings ? $settings->getVoucherLabel() : 'Bons' }}
+                            <div
+                                class="mt-2 flex items-center justify-between gap-2 rounded border bg-blue-50 p-2 text-xs text-gray-600">
+                                <div>
+                                    <strong>{{ $selectedStageObj->name }}</strong><br>
+                                    Heute: {{ $soldToday }} {{ $settings ? $settings->getVoucherLabel() : 'Bons' }}
+                                </div>
+                                <button wire:click="resetStageSelection"
+                                    class="rounded bg-gray-400 px-2 py-2 text-sm text-white hover:bg-gray-500"
+                                    title="Bühnen-Auswahl zurücksetzen">
+                                    ↻
+                                </button>
                             </div>
                         @endif
                     @endif
+
                 </div>
 
                 <!-- Bands des Tages -->
@@ -306,7 +254,8 @@
                 <div class="space-y-3" style="max-height: calc(100vh - 400px); overflow-y: auto; min-height: 400px;">
                     @foreach ($searchResults as $person)
                         <div class="rounded-lg border border-gray-200 p-4 hover:bg-gray-50"
-                            wire:key="person-{{ $person->id }}-{{ $person->voucher_issued_day_1 }}-{{ $person->voucher_issued_day_2 }}-{{ $person->voucher_issued_day_3 }}-{{ $person->voucher_issued_day_4 }}-{{ $person->present ? 'present' : 'absent' }}">
+                            wire:key="search-person-{{ $person->id }}">
+
 
                             <div class="grid grid-cols-1 gap-4 xl:grid-cols-6">
 
@@ -451,30 +400,44 @@
                                 <!-- Status -->
                                 <div class="xl:col-span-1">
                                     <div class="mb-2 text-sm font-medium text-gray-700">Status</div>
-                                    <button wire:click="togglePresence({{ $person->id }})"
-                                        wire:loading.attr="disabled"
-                                        wire:loading.class="opacity-50 cursor-not-allowed"
-                                        wire:target="togglePresence"
-                                        class="{{ $person->present ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-700' }} w-full rounded px-3 py-2 text-sm font-medium"
-                                        title="{{ $person->present ? 'Als abwesend markieren' : 'Als anwesend markieren' }}">
-                                        <span wire:loading.remove wire:target="togglePresence">
-                                            {{ $person->present ? 'Anwesend' : 'Abwesend' }}
-                                        </span>
-                                        <span wire:loading wire:target="togglePresence">
-                                            Wird gesetzt...
-                                        </span>
-                                    </button>
-                                    <!-- Kennzeichen Button -->
+
+                                    @php
+                                        $hasBackstageToday = $person->{"backstage_day_{$currentDay}"};
+                                    @endphp
+
+                                    @if ($hasBackstageToday)
+                                        <button wire:click="togglePresence({{ $person->id }})"
+                                            wire:loading.attr="disabled"
+                                            wire:loading.class="opacity-50 cursor-not-allowed"
+                                            wire:target="togglePresence"
+                                            class="{{ $person->present ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-700' }} w-full rounded px-3 py-2 text-sm font-medium transition-opacity hover:opacity-80 disabled:cursor-not-allowed"
+                                            title="{{ $person->present ? 'Als abwesend markieren' : 'Als anwesend markieren' }}">
+                                            <span wire:loading.remove wire:target="togglePresence">
+                                                {{ $person->present ? 'Anwesend' : 'Abwesend' }}
+                                            </span>
+                                            <span wire:loading wire:target="togglePresence">
+                                                Wird gesetzt...
+                                            </span>
+                                        </button>
+                                    @else
+                                        <div class="w-full cursor-not-allowed rounded bg-gray-200 px-3 py-2 text-center text-sm text-gray-500"
+                                            title="Person hat heute keinen Backstage-Zugang">
+                                            🚫 Kein Zugang
+                                        </div>
+                                    @endif
+
+                                    {{-- Kennzeichen Button bleibt unverändert --}}
                                     <button wire:click="showVehiclePlates({{ $person->id }})"
-                                        class="{{ $person->hasVehiclePlates() ? 'bg-blue-500 text-white' : 'bg-gray-400 text-white' }} w-full rounded px-3 py-1 text-xs font-medium hover:opacity-80"
+                                        class="{{ $person->hasVehiclePlates() ? 'bg-blue-500 text-white' : 'bg-gray-400 text-white' }} mt-2 w-full rounded px-3 py-1 text-xs font-medium hover:opacity-80"
                                         title="Kennzeichen verwalten">
                                         🚗
                                         {{ $person->vehiclePlates->count() > 0 ? $person->vehiclePlates->count() : '' }}
                                         Kennzeichen
                                     </button>
-                                    {{-- NEU: Kennzeichen direkt anzeigen --}}
+
+                                    {{-- Kennzeichen direkt anzeigen bleibt unverändert --}}
                                     @if ($person->hasVehiclePlates())
-                                        <div class="w-full rounded bg-gray-50 px-2 py-1 text-xs">
+                                        <div class="mt-1 w-full rounded bg-gray-50 px-2 py-1 text-xs">
                                             @foreach ($person->vehiclePlates as $plate)
                                                 <div class="text-center font-mono text-gray-700"
                                                     title="Kennzeichen: {{ $plate->license_plate }}">
@@ -490,7 +453,9 @@
                                     <div class="mb-2 text-sm font-medium text-gray-700">Aktionen</div>
                                     <div class="space-y-2">
                                         @php
-                                            $nextAvailableDay = $this->getNextAvailableVoucherDay($person);
+                                            // VERBESSERT: Fresh Data für Button-Rendering
+                                            $freshPerson = \App\Models\Person::find($person->id);
+                                            $nextAvailableDay = $this->getNextAvailableVoucherDay($freshPerson);
                                             $isSingleMode = $settings && $settings->isSingleVoucherMode();
                                             $voucherLabel = $settings ? $settings->getVoucherLabel() : 'Voucher';
                                             $voucherLabel = 'Frei ' . $voucherLabel;
@@ -498,7 +463,7 @@
 
                                         @if ($nextAvailableDay)
                                             @php
-                                                $availableCount = $person->getAvailableVouchersForDay(
+                                                $availableCount = $freshPerson->getAvailableVouchersForDay(
                                                     $nextAvailableDay,
                                                 );
                                                 $buttonText = $isSingleMode
@@ -509,15 +474,19 @@
                                                     : "Tag $nextAvailableDay";
                                             @endphp
 
+                                            {{-- VERBESSERTE Voucher-Button --}}
                                             <button
-                                                wire:click="issueVouchers({{ $person->id }}, {{ $nextAvailableDay }})"
+                                                wire:click="issueVouchers({{ $freshPerson->id }}, {{ $nextAvailableDay }})"
                                                 wire:loading.attr="disabled" wire:loading.class="opacity-50"
                                                 wire:target="issueVouchers"
-                                                class="w-full rounded bg-blue-500 px-3 py-2 text-sm text-white hover:bg-blue-600"
-                                                title="{{ $isSingleMode ? '1' : 'Alle verfügbaren' }} {{ $voucherLabel }} für {{ $dayLabel }} ausgeben">
+                                                wire:key="voucher-btn-{{ $freshPerson->id }}-{{ $availableCount }}-{{ now()->timestamp }}"
+                                                class="w-full rounded bg-blue-500 px-3 py-2 text-sm text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                                                title="{{ $isSingleMode ? '1' : 'Alle verfügbaren' }} {{ $voucherLabel }} für {{ $dayLabel }} ausgeben"
+                                                data-person-id="{{ $freshPerson->id }}">
+
                                                 <span wire:loading.remove
                                                     wire:target="issueVouchers">{{ $buttonText }}</span>
-                                                <span wire:loading wire:target="issueVouchers">💳...</span>
+                                                <span wire:loading wire:target="issueVouchers">💳 Ausgeben...</span>
                                             </button>
 
                                             @if ($nextAvailableDay != $currentDay)
@@ -532,7 +501,7 @@
                                             </div>
                                         @endif
 
-                                        <!-- NEU: Person-basierte Voucher-Käufe -->
+                                        {{-- NEU: Person-basierte Voucher-Käufe (falls vorhanden) --}}
                                         @if ($this->canShowPersonPurchase())
                                             <div class="mt-2 border-t pt-2">
                                                 <div class="mb-1 text-xs text-gray-500">Bon kaufen:</div>
@@ -552,7 +521,6 @@
                                                 </div>
                                             </div>
                                         @endif
-
                                     </div>
                                 </div>
                             </div>
@@ -745,16 +713,28 @@
                                         <td class="px-4 py-3 text-sm">{{ $member->first_name }}</td>
                                         <td class="px-4 py-3 text-sm">{{ $member->last_name }}</td>
                                         <td class="px-4 py-3 text-sm">
-                                            <button wire:click="togglePresence({{ $member->id }})"
-                                                wire:loading.attr="disabled"
-                                                wire:loading.class="opacity-50 cursor-not-allowed"
-                                                wire:target="togglePresence"
-                                                class="{{ $member->present ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-700' }} rounded px-2 py-1 text-xs">
-                                                <span wire:loading.remove wire:target="togglePresence">
-                                                    {{ $member->present ? 'Ja' : 'Nein' }}
+                                            @php
+                                                $hasBackstageToday = $member->{"backstage_day_{$currentDay}"};
+                                            @endphp
+
+                                            @if ($hasBackstageToday)
+                                                <button wire:click="togglePresence({{ $member->id }})"
+                                                    wire:loading.attr="disabled"
+                                                    wire:loading.class="opacity-50 cursor-not-allowed"
+                                                    wire:target="togglePresence"
+                                                    class="{{ $member->present ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-700' }} rounded px-2 py-1 text-xs hover:opacity-80">
+                                                    <span wire:loading.remove wire:target="togglePresence">
+                                                        {{ $member->present ? 'Ja' : 'Nein' }}
+                                                    </span>
+                                                    <span wire:loading wire:target="togglePresence">...</span>
+                                                </button>
+                                            @else
+                                                <span
+                                                    class="inline-block cursor-not-allowed rounded bg-gray-200 px-2 py-1 text-xs text-gray-500"
+                                                    title="Kein Backstage-Zugang heute">
+                                                    🚫 Kein Zugang
                                                 </span>
-                                                <span wire:loading wire:target="togglePresence">...</span>
-                                            </button>
+                                            @endif
                                         </td>
                                         <td class="px-4 py-3 text-sm">
                                             @if ($member->hasVehiclePlates())
@@ -782,7 +762,9 @@
                                         <td class="px-4 py-3 text-sm">
                                             <div class="flex space-x-2">
                                                 @php
-                                                    $nextAvailableDay = $this->getNextAvailableVoucherDay($member);
+                                                    // FRESH DATA für Band-Mitglieder
+                                                    $freshMember = \App\Models\Person::find($member->id);
+                                                    $nextAvailableDay = $this->getNextAvailableVoucherDay($freshMember);
                                                     $isSingleMode = $settings && $settings->isSingleVoucherMode();
                                                     $voucherLabel = $settings
                                                         ? $settings->getVoucherLabel()
@@ -791,16 +773,17 @@
 
                                                 @if ($nextAvailableDay)
                                                     @php
-                                                        $availableCount = $member->getAvailableVouchersForDay(
+                                                        $availableCount = $freshMember->getAvailableVouchersForDay(
                                                             $nextAvailableDay,
                                                         );
                                                         $buttonText = $isSingleMode ? 'Ausgeben' : 'Alle';
                                                     @endphp
                                                     <button
-                                                        wire:click="issueVouchers({{ $member->id }}, {{ $nextAvailableDay }})"
+                                                        wire:click="issueVouchers({{ $freshMember->id }}, {{ $nextAvailableDay }})"
                                                         wire:loading.attr="disabled" wire:loading.class="opacity-50"
                                                         wire:target="issueVouchers"
-                                                        class="rounded bg-blue-500 px-2 py-1 text-xs text-white hover:bg-blue-600"
+                                                        wire:key="member-voucher-{{ $freshMember->id }}-{{ $availableCount }}"
+                                                        class="rounded bg-blue-500 px-2 py-1 text-xs text-white hover:bg-blue-600 disabled:opacity-50"
                                                         title="{{ $isSingleMode ? '1' : $availableCount }} {{ $voucherLabel }} ausgeben">
                                                         <span wire:loading.remove
                                                             wire:target="issueVouchers">{{ $buttonText }}</span>
@@ -868,10 +851,21 @@
                             </p>
                         @endif
                     </div>
-                    <button wire:click="togglePresence({{ $selectedPerson->id }})"
-                        class="{{ $selectedPerson->present ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-700' }} rounded px-4 py-2 font-medium">
-                        {{ $selectedPerson->present ? 'Anwesend' : 'Nicht anwesend' }}
-                    </button>
+                    @php
+                        $hasBackstageToday = $selectedPerson->{"backstage_day_{$currentDay}"};
+                    @endphp
+
+                    @if ($hasBackstageToday)
+                        <button wire:click="togglePresence({{ $selectedPerson->id }})"
+                            class="{{ $selectedPerson->present ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-700' }} rounded px-4 py-2 font-medium hover:opacity-80">
+                            {{ $selectedPerson->present ? 'Anwesend' : 'Nicht anwesend' }}
+                        </button>
+                    @else
+                        <div class="cursor-not-allowed rounded bg-gray-200 px-4 py-2 font-medium text-gray-500"
+                            title="Person hat heute keinen Backstage-Zugang">
+                            🚫 Kein Backstage-Zugang heute
+                        </div>
+                    @endif
                 </div>
 
                 <!-- Voucher Information -->
@@ -963,16 +957,28 @@
                                         <td class="px-4 py-3 text-sm">{{ $member->first_name }}</td>
                                         <td class="px-4 py-3 text-sm">{{ $member->last_name }}</td>
                                         <td class="px-4 py-3 text-sm">
-                                            <button wire:click="togglePresence({{ $member->id }})"
-                                                wire:loading.attr="disabled"
-                                                wire:loading.class="opacity-50 cursor-not-allowed"
-                                                wire:target="togglePresence"
-                                                class="{{ $member->present ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-700' }} rounded px-2 py-1 text-xs">
-                                                <span wire:loading.remove wire:target="togglePresence">
-                                                    {{ $member->present ? 'Ja' : 'Nein' }}
+                                            @php
+                                                $hasBackstageToday = $member->{"backstage_day_{$currentDay}"};
+                                            @endphp
+
+                                            @if ($hasBackstageToday)
+                                                <button wire:click="togglePresence({{ $member->id }})"
+                                                    wire:loading.attr="disabled"
+                                                    wire:loading.class="opacity-50 cursor-not-allowed"
+                                                    wire:target="togglePresence"
+                                                    class="{{ $member->present ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-700' }} rounded px-2 py-1 text-xs hover:opacity-80">
+                                                    <span wire:loading.remove wire:target="togglePresence">
+                                                        {{ $member->present ? 'Ja' : 'Nein' }}
+                                                    </span>
+                                                    <span wire:loading wire:target="togglePresence">...</span>
+                                                </button>
+                                            @else
+                                                <span
+                                                    class="inline-block cursor-not-allowed rounded bg-gray-200 px-2 py-1 text-xs text-gray-500"
+                                                    title="Kein Backstage-Zugang heute">
+                                                    🚫 Kein Zugang
                                                 </span>
-                                                <span wire:loading wire:target="togglePresence">...</span>
-                                            </button>
+                                            @endif
                                         </td>
                                         <td class="px-4 py-3 text-sm">
                                             @if ($member->hasVehiclePlates())
@@ -1208,11 +1214,23 @@
                                             </div>
                                         </td>
                                         <td class="px-4 py-3">
-                                            <button wire:click="togglePresence({{ $guest->id }})"
-                                                class="{{ $guest->present ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-red-100 text-red-800 hover:bg-red-200' }} inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors duration-200"
-                                                title="Klicken um Status zu ändern">
-                                                {{ $guest->present ? '✓ Anwesend' : '✗ Abwesend' }}
-                                            </button>
+                                            @php
+                                                $hasBackstageToday = $guest->{"backstage_day_{$currentDay}"};
+                                            @endphp
+
+                                            @if ($hasBackstageToday)
+                                                <button wire:click="togglePresence({{ $guest->id }})"
+                                                    class="{{ $guest->present ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-red-100 text-red-800 hover:bg-red-200' }} inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors duration-200"
+                                                    title="Klicken um Status zu ändern">
+                                                    {{ $guest->present ? '✓ Anwesend' : '✗ Abwesend' }}
+                                                </button>
+                                            @else
+                                                <span
+                                                    class="inline-flex cursor-not-allowed items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-500"
+                                                    title="Kein Backstage-Zugang heute">
+                                                    🚫 Kein Zugang
+                                                </span>
+                                            @endif
                                         </td>
                                         <td class="px-4 py-3">
                                             <div class="flex space-x-1">
@@ -1283,74 +1301,209 @@
     @endif
 
     @include('components.vehicle-plates-modal')
-</div>
 
-@script
     <script>
-        $wire.on('search-cleared', () => {
-            const searchInput = document.querySelector('input[wire\\:model\\.live\\.debounce\\.300ms="search"]');
-            const bandSearchInput = document.querySelector(
-                'input[wire\\:model\\.live\\.debounce\\.300ms="bandSearch"]');
-
-            if (searchInput) {
-                searchInput.value = '';
-                searchInput.dispatchEvent(new Event('input', {
-                    bubbles: true
-                }));
-            }
-
-            if (bandSearchInput) {
-                bandSearchInput.value = '';
-                bandSearchInput.dispatchEvent(new Event('input', {
-                    bubbles: true
-                }));
-            }
-        });
-
-        $wire.on('refresh-component', () => {
-            // Force Livewire to completely re-render the component
-            window.Livewire.find($wire.__instance.id).call('$refresh');
-        });
-
-        // LocalStorage für Bühnenauswahl
-        window.addEventListener('DOMContentLoaded', function() {
-            // Beim Laden der Seite gespeicherte Bühne laden
-            const savedStageId = localStorage.getItem('backstage_purchase_stage_id');
-            if (savedStageId && savedStageId !== 'null') {
-                $wire.set('purchaseStageId', parseInt(savedStageId));
-            }
-        });
-
-        // Livewire Event Listener für Stage-Änderungen
-        $wire.on('stage-selected', (stageId) => {
-            if (stageId && stageId !== null) {
-                localStorage.setItem('backstage_purchase_stage_id', stageId);
-            } else {
-                localStorage.removeItem('backstage_purchase_stage_id');
-            }
-        });
         document.addEventListener('DOMContentLoaded', function() {
-            // Suchfeld-Funktionalität
-            const searchInput = document.getElementById('search-input');
-            const bandSearchInput = document.getElementById('band-search-input');
+            'use strict';
 
-            if (searchInput) {
-                searchInput.addEventListener('keydown', function(e) {
-                    if (e.key === 'Escape' && this.value.trim() !== '') {
-                        e.preventDefault();
-                        @this.call('clearSearch');
+            // Performance Optimierungen
+            let clickTimeout = null;
+            let voucherClickTimeout = {};
+
+            // VERBESSERTE Spam-Click Prevention
+            document.addEventListener('click', function(e) {
+                try {
+                    // Voucher Button Protection
+                    if (e.target.matches('[wire\\:click*="issueVouchers"]')) {
+                        const wireClick = e.target.getAttribute('wire:click');
+                        const personId = wireClick ? wireClick.match(/issueVouchers\((\d+)/)?.[1] : null;
+
+                        if (personId && voucherClickTimeout[personId]) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            console.log('Voucher click blocked for person:', personId);
+                            return false;
+                        }
+
+                        if (personId) {
+                            voucherClickTimeout[personId] = true;
+                            console.log('Voucher click registered for person:', personId);
+                            setTimeout(() => {
+                                delete voucherClickTimeout[personId];
+                                console.log('Voucher click timeout cleared for person:', personId);
+                            }, 3000);
+                        }
                     }
-                });
+
+                    // Allgemeine Button Protection
+                    const targets = ['[wire\\:click*="togglePresence"]'];
+                    const isTargetElement = targets.some(selector =>
+                        e.target.matches(selector) || e.target.closest(selector)
+                    );
+
+                    if (isTargetElement) {
+                        if (clickTimeout) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            return false;
+                        }
+
+                        clickTimeout = setTimeout(() => {
+                            clickTimeout = null;
+                        }, 1000);
+                    }
+                } catch (error) {
+                    console.error('Click handler error:', error);
+                }
+            });
+
+            // Loading States
+            window.addEventListener('livewire:request', () => {
+                document.body.style.cursor = 'wait';
+            });
+
+            window.addEventListener('livewire:response', () => {
+                document.body.style.cursor = 'default';
+            });
+
+            // VERBESSERTE Keyboard Shortcuts
+            document.addEventListener('keydown', function(e) {
+                try {
+                    const searchInput = document.getElementById('search-input');
+                    const bandSearchInput = document.getElementById('band-search-input');
+
+                    // ESC in Suchfeldern
+                    if (e.key === 'Escape' && e.target.matches('input')) {
+                        if (e.target === searchInput && searchInput.value.trim() !== '') {
+                            e.preventDefault();
+                            const component = Livewire.find(document.querySelector('[wire\\:id]')
+                                ?.getAttribute('wire:id'));
+                            if (component) component.call('clearSearch');
+                        }
+                        if (e.target === bandSearchInput && bandSearchInput.value.trim() !== '') {
+                            e.preventDefault();
+                            const component = Livewire.find(document.querySelector('[wire\\:id]')
+                                ?.getAttribute('wire:id'));
+                            if (component) component.call('clearBandSearch');
+                        }
+                    }
+
+                    // Globale Shortcuts
+                    if (e.key === 'Escape' && !e.target.matches('input')) {
+                        const component = Livewire.find(document.querySelector('[wire\\:id]')?.getAttribute(
+                            'wire:id'));
+                        if (component) component.call('clearAllSearches');
+                    }
+
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+                        e.preventDefault();
+                        if (searchInput) searchInput.focus();
+                    }
+
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+                        e.preventDefault();
+                        if (bandSearchInput) bandSearchInput.focus();
+                    }
+                } catch (error) {
+                    console.error('Keyboard shortcut error:', error);
+                }
+            });
+
+            // VERBESSERTE LocalStorage
+            try {
+                const savedStageId = localStorage.getItem('backstage_purchase_stage_id');
+                if (savedStageId && savedStageId !== 'null') {
+                    const livewireComponent = Livewire.find(document.querySelector('[wire\\:id]')?.getAttribute(
+                        'wire:id'));
+                    if (livewireComponent) {
+                        livewireComponent.set('purchaseStageId', parseInt(savedStageId));
+                    }
+                }
+            } catch (error) {
+                console.error('LocalStorage error:', error);
             }
 
-            if (bandSearchInput) {
-                bandSearchInput.addEventListener('keydown', function(e) {
-                    if (e.key === 'Escape' && this.value.trim() !== '') {
-                        e.preventDefault();
-                        @this.call('clearBandSearch');
+            // VERBESSERTE Livewire Events
+            document.addEventListener('livewire:initialized', () => {
+                try {
+                    const component = Livewire.find(document.querySelector('[wire\\:id]')?.getAttribute(
+                        'wire:id'));
+                    if (!component) {
+                        console.error('Livewire component not found');
+                        return;
                     }
-                });
-            }
+
+                    // Search cleared event
+                    component.on('search-cleared', () => {
+                        const searchInput = document.querySelector(
+                            'input[wire\\:model\\.live\\.debounce\\.500ms="search"]');
+                        const bandSearchInput = document.querySelector(
+                            'input[wire\\:model\\.live\\.debounce\\.500ms="bandSearch"]');
+
+                        if (searchInput) {
+                            searchInput.value = '';
+                            searchInput.dispatchEvent(new Event('input', {
+                                bubbles: true
+                            }));
+                        }
+
+                        if (bandSearchInput) {
+                            bandSearchInput.value = '';
+                            bandSearchInput.dispatchEvent(new Event('input', {
+                                bubbles: true
+                            }));
+                        }
+                    });
+
+                    // Stage selected event
+                    component.on('stage-selected', (stageId) => {
+                        try {
+                            if (stageId && stageId !== null) {
+                                localStorage.setItem('backstage_purchase_stage_id', stageId);
+                            } else {
+                                localStorage.removeItem('backstage_purchase_stage_id');
+                            }
+                        } catch (error) {
+                            console.error('Stage selection storage error:', error);
+                        }
+                    });
+
+                    // VERBESSERTE Voucher-issued Event
+                    component.on('voucher-issued', (data) => {
+                        console.log('Voucher issued:', data);
+
+                        try {
+                            // Button-States forciert aktualisieren
+                            const voucherButtons = document.querySelectorAll(
+                                `[wire\\:click*="issueVouchers(${data.personId}"]`);
+                            voucherButtons.forEach(button => {
+                                button.disabled = false;
+                                button.classList.remove('opacity-50');
+
+                                // Button ausblenden wenn keine Voucher mehr
+                                if (data.remainingVouchers <= 0) {
+                                    const parentDiv = button.closest(
+                                        '.space-y-2, .flex, .grid');
+                                    if (parentDiv) {
+                                        parentDiv.style.display = 'none';
+                                    }
+                                }
+                            });
+
+                            // Visual Feedback
+                            if (data.remainingVouchers <= 0) {
+                                console.log(`No more vouchers for person ${data.personId}`);
+                            }
+
+                        } catch (error) {
+                            console.error('Voucher issued event error:', error);
+                        }
+                    });
+
+                } catch (error) {
+                    console.error('Livewire initialization error:', error);
+                }
+            });
         });
     </script>
-@endscript
+</div>
