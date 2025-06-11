@@ -1,3 +1,18 @@
+#!/bin/bash
+
+echo "🚀 Migration BackstageControl zu Komponenten..."
+
+# Backup erstellen
+echo "📋 Backup der originalen Datei..."
+cp resources/views/livewire/backstage-control.blade.php resources/views/livewire/backstage-control.blade.php.backup
+
+# Verzeichnis-Struktur erstellen
+echo "📁 Erstelle Verzeichnis-Struktur..."
+mkdir -p resources/views/components/backstage
+
+# Haupt-Template ersetzen
+echo "🔄 Ersetze Haupt-Template..."
+cat > resources/views/livewire/backstage-control.blade.php << 'MAIN_EOF'
 {{-- resources/views/livewire/backstage-control.blade.php - REFACTORED --}}
 
 <div class="container mx-auto px-4 py-8">
@@ -5,7 +20,7 @@
 
     <div class="mx-auto mt-6 max-w-7xl">
         <!-- Flash Messages -->
-        @include('components.flash-messages')
+        @include('components.backstage.flash-messages')
 
         <!-- Header Section -->
         @include('components.backstage.header-section', [
@@ -16,14 +31,14 @@
             'currentDay' => $currentDay,
             'voucherAmount' => $voucherAmount,
             'purchaseStageId' => $purchaseStageId,
-            'stageFilter' => $stageFilter,
+            'stageFilter' => $stageFilter
         ])
 
         <!-- Band Search Results -->
         @if (count($bandSearchResults) > 0)
             @include('components.backstage.band-search-results', [
                 'bandSearchResults' => $bandSearchResults,
-                'settings' => $settings,
+                'settings' => $settings
             ])
         @endif
 
@@ -32,20 +47,18 @@
             @include('components.backstage.person-search-results', [
                 'searchResults' => $searchResults,
                 'settings' => $settings,
-                'currentDay' => $currentDay,
+                'currentDay' => $currentDay
             ])
         @elseif($showBandList && $todaysBands->count() > 0)
-            <!-- Today's Bands -->
             @include('components.backstage.todays-bands', [
                 'todaysBands' => $todaysBands,
                 'settings' => $settings,
                 'currentDay' => $currentDay,
                 'stageFilter' => $stageFilter,
                 'stages' => $stages,
-                'selectedBand' => $selectedBand,
+                'selectedBand' => $selectedBand
             ])
         @elseif(!$search && !$bandSearch && !$showBandList)
-            <!-- Welcome Message -->
             @include('components.backstage.welcome-message')
         @endif
 
@@ -57,11 +70,11 @@
                 'settings' => $settings,
                 'currentDay' => $currentDay,
                 'sortBy' => $sortBy,
-                'sortDirection' => $sortDirection,
+                'sortDirection' => $sortDirection
             ])
         @endif
 
-        <!-- Selected Person Details (Legacy - wird durch Modal ersetzt) -->
+        <!-- Selected Person Details (Legacy - kann entfernt werden) -->
         @if ($selectedPerson)
             @include('components.backstage.selected-person-details', [
                 'selectedPerson' => $selectedPerson,
@@ -69,7 +82,7 @@
                 'settings' => $settings,
                 'currentDay' => $currentDay,
                 'sortBy' => $sortBy,
-                'sortDirection' => $sortDirection,
+                'sortDirection' => $sortDirection
             ])
         @endif
 
@@ -78,7 +91,7 @@
             @include('components.backstage.selected-band-from-list', [
                 'selectedBand' => $selectedBand,
                 'settings' => $settings,
-                'currentDay' => $currentDay,
+                'currentDay' => $currentDay
             ])
         @endif
     </div>
@@ -98,9 +111,15 @@
         'showGuestDeleteModal' => $showGuestDeleteModal,
         'guestToDelete' => $guestToDelete,
         'showPersonDetailsModal' => $showPersonDetailsModal,
-        'selectedPersonForDetails' => $selectedPersonForDetails,
+        'selectedPersonForDetails' => $selectedPersonForDetails
     ])
 
     <!-- JavaScript -->
     @include('components.backstage.scripts')
 </div>
+MAIN_EOF
+
+echo "✅ Migration abgeschlossen!"
+echo "📁 Backup: resources/views/livewire/backstage-control.blade.php.backup"
+echo "🔧 Erstelle jetzt die einzelnen Komponenten-Dateien..."
+

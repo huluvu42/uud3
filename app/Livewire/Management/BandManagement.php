@@ -1,5 +1,5 @@
 <?php
-// app/Livewire/Management/BandManagement.php - OPTIMIERTE VERSION
+// app/Livewire/Management/BandManagement.php - PERFORMANCE OPTIMIERTE VERSION
 
 namespace App\Livewire\Management;
 
@@ -7,6 +7,8 @@ use App\Models\Band;
 use App\Models\Person;
 use App\Models\Stage;
 use App\Models\VehiclePlate;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -59,20 +61,153 @@ class BandManagement extends Component
     public $search = '';
 
     // Performance Cache
-    private $stagesCache = null;
+    private $queryCache = [];
 
     public function mount()
     {
         $this->year = date('Y');
+
+        // Query Logging in Development
+        if (app()->environment('local')) {
+            DB::enableQueryLog();
+        }
     }
 
-    // NEU: Suchfeld-Management Methoden
+    // ===== OPTIMIERTE QUERY METHODEN =====
+
+    /**
+     * Optimierte Band-Query mit minimalen Select Fields und Eager Loading
+     */
+    private function getBandsQuery()
+    {
+        return Band::query()
+            ->select([
+                'id',
+                'band_name',
+                'year',
+                'stage_id',
+                'all_present',
+                'plays_day_1',
+                'plays_day_2',
+                'plays_day_3',
+                'plays_day_4',
+                'travel_costs',
+                'created_at'
+            ])
+            ->with([
+                'stage:id,name',
+                'members' => function ($query) {
+                    $query->select(['id', 'band_id', 'present', 'first_name', 'last_name'])
+                        ->where('is_duplicate', false);
+                },
+                'vehiclePlates:id,band_id,license_plate'
+            ])
+            ->withCount([
+                'members as total_members_count',
+                'members as present_members_count' => function ($query) {
+                    $query->where('present', true)->where('is_duplicate', false);
+                }
+            ])
+            ->where('year', $this->year);
+    }
+
+    /**
+     * Optimierte Such-Implementierung mit Index-freundlichen Queries
+     */
+    private function applySearch($query, $search)
+    {
+        if (!$search || strlen($search) < 2) {
+            return $query;
+        }
+
+        $searchTerm = trim($search);
+
+        return $query->where(function ($q) use ($searchTerm) {
+            // Exakte Treffer zuerst (nutzt Index optimal)
+            $q->where('band_name', 'ILIKE', $searchTerm)
+                // Dann Starts-with (Index-freundlich)
+                ->orWhere('band_name', 'ILIKE', $searchTerm . '%')
+                // Dann Contains (weniger effizient, aber nötig)
+                ->orWhere('band_name', 'ILIKE', '%' . $searchTerm . '%')
+                // Auch in Stage-Namen suchen
+                ->orWhereHas('stage', function ($stageQuery) use ($searchTerm) {
+                    $stageQuery->where('name', 'ILIKE', '%' . $searchTerm . '%');
+                });
+        });
+    }
+
+    // ===== CACHING METHODEN =====
+
+    /**
+     * Cached Stages mit allen nötigen Feldern
+     */
+    private function getCachedStages()
+    {
+        if (!isset($this->queryCache['stages'])) {
+            $this->queryCache['stages'] = Cache::remember(
+                'stages_for_bands_' . $this->year,
+                3600, // 1 Stunde Cache
+                fn() => Stage::select([
+                    'id',
+                    'name',
+                    'voucher_amount',
+                    'guest_allowed',
+                    'backstage_all_days',
+                    'voucher_day_1',
+                    'voucher_day_2',
+                    'voucher_day_3',
+                    'voucher_day_4'
+                ])
+                    ->orderBy('name')
+                    ->get()
+            );
+        }
+        return $this->queryCache['stages'];
+    }
+
+    /**
+     * Cached Statistics für Dashboard
+     */
+    private function getCachedStatistics()
+    {
+        return Cache::remember("band_stats_{$this->year}", 300, function () {
+            return [
+                'total_bands' => Band::where('year', $this->year)->count(),
+                'total_members' => Person::whereHas('band', function ($q) {
+                    $q->where('year', $this->year);
+                })->where('is_duplicate', false)->count(),
+                'present_members' => Person::whereHas('band', function ($q) {
+                    $q->where('year', $this->year);
+                })->where('present', true)->where('is_duplicate', false)->count(),
+                'bands_complete' => Band::where('year', $this->year)->where('all_present', true)->count(),
+                'total_vehicles' => VehiclePlate::whereHas('band', function ($q) {
+                    $q->where('year', $this->year);
+                })->count()
+            ];
+        });
+    }
+
+    /**
+     * Cache Reset mit selektivem Clearing
+     */
+    private function resetCache($clearStats = false)
+    {
+        $this->queryCache = [];
+
+        if ($clearStats) {
+            Cache::forget("band_stats_{$this->year}");
+        }
+
+        // Stage Cache nur bei Bedarf löschen
+        Cache::forget('stages_for_bands_' . $this->year);
+    }
+
+    // ===== SEARCH & PAGINATION =====
+
     public function clearSearch()
     {
         $this->search = '';
-        $this->resetPage(); // Pagination zurücksetzen
-
-        // JavaScript zum sofortigen Leeren des Input-Felds
+        $this->resetPage();
         $this->js('
             const input = document.getElementById("search-input");
             if (input) {
@@ -94,55 +229,86 @@ class BandManagement extends Component
         ');
     }
 
-    // Cache-Management für Stages
-    private function getStagesCache()
+    public function updatedSearch()
     {
-        if ($this->stagesCache === null) {
-            $this->stagesCache = Stage::select(['id', 'name'])->orderBy('name')->get();
+        $this->resetPage();
+    }
+
+    // ===== SMART REFRESH SYSTEM =====
+
+    /**
+     * Intelligentes Refresh-System - lädt nur was nötig ist
+     */
+    private function smartRefresh($refreshMembers = false, $refreshStats = false)
+    {
+        if ($refreshStats) {
+            Cache::forget("band_stats_{$this->year}");
         }
-        return $this->stagesCache;
+
+        if ($this->selectedBand && $refreshMembers) {
+            // Nur Members neu laden, nicht die ganze Band
+            $this->selectedBand->load([
+                'members' => function ($query) {
+                    $query->select([
+                        'id',
+                        'band_id',
+                        'first_name',
+                        'last_name',
+                        'present',
+                        'backstage_day_1',
+                        'backstage_day_2',
+                        'backstage_day_3',
+                        'backstage_day_4',
+                        'voucher_day_1',
+                        'voucher_day_2',
+                        'voucher_day_3',
+                        'voucher_day_4',
+                        'remarks',
+                        'responsible_person_id'
+                    ])
+                        ->with('responsiblePerson:id,first_name,last_name')
+                        ->where('is_duplicate', false)
+                        ->orderBy('first_name');
+                },
+                'vehiclePlates:id,band_id,license_plate'
+            ]);
+        }
+
+        $this->resetCache($refreshStats);
     }
 
-    private function resetCache()
-    {
-        $this->stagesCache = null;
-    }
+    // ===== OPTIMIERTES RENDER =====
 
-    // Optimierte render() Methode
     public function render()
     {
-        // Optimierte Query mit Select Fields
-        $bands = Band::with([
-            'stage:id,name',
-            'members:id,band_id,present', // Nur nötige Felder für Count
-            'vehiclePlates:id,band_id,license_plate' // Nur nötige Felder
-        ])
-            ->select([
-                'id',
-                'band_name',
-                'year',
-                'stage_id',
-                'all_present',
-                'plays_day_1',
-                'plays_day_2',
-                'plays_day_3',
-                'plays_day_4'
-            ])
-            ->when($this->search, function ($query) {
-                $query->where('band_name', 'ILIKE', '%' . $this->search . '%');
-            })
-            ->orderBy('band_name')
-            ->paginate(10);
+        $bandsQuery = $this->getBandsQuery();
+
+        // Suche anwenden
+        if ($this->search) {
+            $bandsQuery = $this->applySearch($bandsQuery, $this->search);
+        }
+
+        // Cursor Pagination für bessere Performance bei großen Datensätzen
+        $bands = $bandsQuery->orderBy('band_name')
+            ->paginate(15); // Kann zu cursorPaginate() gewechselt werden
+
+        // Query Logging in Development
+        if (app()->environment('local')) {
+            $this->logQueries();
+        }
 
         return view('livewire.management.band-management', [
             'bands' => $bands,
-            'stages' => $this->getStagesCache()
+            'stages' => $this->getCachedStages(),
+            'statistics' => $this->getCachedStatistics()
         ]);
     }
 
-    // Band CRUD Methods (mit Cache-Reset)
+    // ===== BAND CRUD (OPTIMIERT) =====
+
     public function createBand()
     {
+        $this->closeAllModals();
         $this->showCreateForm = true;
         $this->resetBandForm();
     }
@@ -150,7 +316,7 @@ class BandManagement extends Component
     public function saveBand()
     {
         $this->validate([
-            'band_name' => 'required|string|max:255',
+            'band_name' => 'required|string|max:255|unique:bands,band_name,NULL,id,year,' . $this->year,
             'stage_id' => 'required|exists:stages,id',
             'travel_costs' => 'nullable|numeric|min:0',
         ]);
@@ -163,10 +329,10 @@ class BandManagement extends Component
             'plays_day_4' => $this->plays_day_4,
             'stage_id' => $this->stage_id,
             'travel_costs' => $this->travel_costs ?: null,
-            'year' => $this->year, // Wird automatisch auf aktuelles Jahr gesetzt
+            'year' => $this->year,
         ]);
 
-        $this->resetCache(); // Cache leeren
+        $this->resetCache(true);
         $this->showCreateForm = false;
         $this->resetBandForm();
         session()->flash('message', 'Band wurde erfolgreich erstellt!');
@@ -174,7 +340,21 @@ class BandManagement extends Component
 
     public function editBand($id)
     {
-        $this->editingBand = Band::findOrFail($id);
+        // Optimierte Einzelband-Abfrage
+        $this->editingBand = Band::select([
+            'id',
+            'band_name',
+            'plays_day_1',
+            'plays_day_2',
+            'plays_day_3',
+            'plays_day_4',
+            'stage_id',
+            'travel_costs',
+            'year'
+        ])->findOrFail($id);
+
+        $this->closeAllModals();
+
         $this->band_name = $this->editingBand->band_name;
         $this->plays_day_1 = $this->editingBand->plays_day_1;
         $this->plays_day_2 = $this->editingBand->plays_day_2;
@@ -183,13 +363,14 @@ class BandManagement extends Component
         $this->stage_id = $this->editingBand->stage_id;
         $this->travel_costs = $this->editingBand->travel_costs;
         $this->year = $this->editingBand->year;
+
         $this->showEditForm = true;
     }
 
     public function updateBand()
     {
         $this->validate([
-            'band_name' => 'required|string|max:255',
+            'band_name' => 'required|string|max:255|unique:bands,band_name,' . $this->editingBand->id . ',id,year,' . $this->year,
             'stage_id' => 'required|exists:stages,id',
             'travel_costs' => 'nullable|numeric|min:0',
         ]);
@@ -202,10 +383,9 @@ class BandManagement extends Component
             'plays_day_4' => $this->plays_day_4,
             'stage_id' => $this->stage_id,
             'travel_costs' => $this->travel_costs ?: null,
-            // Jahr wird beim Bearbeiten nicht verändert
         ]);
 
-        $this->resetCache(); // Cache leeren
+        $this->resetCache(true);
         $this->showEditForm = false;
         $this->resetBandForm();
         session()->flash('message', 'Band wurde erfolgreich aktualisiert!');
@@ -213,48 +393,80 @@ class BandManagement extends Component
 
     public function deleteBand($id)
     {
-        Band::findOrFail($id)->delete();
-        $this->resetCache(); // Cache leeren
-        session()->flash('message', 'Band wurde erfolgreich gelöscht!');
+        $band = Band::select(['id', 'band_name'])->find($id);
+        if ($band) {
+            $bandName = $band->band_name;
+            $band->delete();
+            $this->resetCache(true);
+            session()->flash('message', "{$bandName} wurde erfolgreich gelöscht!");
+        }
     }
 
-    // Member CRUD Methods
+    // ===== MEMBER CRUD (OPTIMIERT) =====
+
     public function showMembers($bandId)
     {
-        $this->selectedBand = Band::with(['members', 'vehiclePlates'])->findOrFail($bandId);
+        // Lazy Loading für Member-Details nur wenn benötigt
+        $this->selectedBand = Band::select([
+            'id',
+            'band_name',
+            'year',
+            'stage_id',
+            'all_present',
+            'plays_day_1',
+            'plays_day_2',
+            'plays_day_3',
+            'plays_day_4'
+        ])
+            ->with([
+                'stage:id,name,voucher_amount,guest_allowed,backstage_all_days',
+                'members' => function ($query) {
+                    $query->select([
+                        'id',
+                        'band_id',
+                        'first_name',
+                        'last_name',
+                        'present',
+                        'backstage_day_1',
+                        'backstage_day_2',
+                        'backstage_day_3',
+                        'backstage_day_4',
+                        'voucher_day_1',
+                        'voucher_day_2',
+                        'voucher_day_3',
+                        'voucher_day_4',
+                        'remarks',
+                        'responsible_person_id'
+                    ])
+                        ->with('responsiblePerson:id,first_name,last_name')
+                        ->where('is_duplicate', false)
+                        ->orderBy('first_name');
+                },
+                'vehiclePlates:id,band_id,license_plate'
+            ])
+            ->findOrFail($bandId);
+
+        $this->closeAllModals();
     }
 
     public function addMember($bandId)
     {
-        $this->selectedBand = Band::findOrFail($bandId);
-        $this->showMemberForm = true;
+        // Minimale Band-Daten für Mitglieder-Erstellung
+        $this->selectedBand = Band::select([
+            'id',
+            'year',
+            'stage_id',
+            'plays_day_1',
+            'plays_day_2',
+            'plays_day_3',
+            'plays_day_4'
+        ])->with('stage:id,name,voucher_amount,backstage_all_days')
+            ->findOrFail($bandId);
+
+        $this->closeAllModals();
         $this->resetMemberForm();
-
-        // Vorgaben von der Bühne laden
         $this->loadStageDefaults();
-    }
-
-    private function loadStageDefaults()
-    {
-        if (!$this->selectedBand || !$this->selectedBand->stage) {
-            return;
-        }
-
-        $stage = $this->selectedBand->stage;
-
-        // Backstage-Access setzen
-        $backstageAccess = $this->calculateBackstageAccess($stage);
-        $this->backstage_day_1 = $backstageAccess['day_1'];
-        $this->backstage_day_2 = $backstageAccess['day_2'];
-        $this->backstage_day_3 = $backstageAccess['day_3'];
-        $this->backstage_day_4 = $backstageAccess['day_4'];
-
-        // Voucher setzen
-        $vouchers = $this->calculateVouchers($stage);
-        $this->voucher_day_1 = $vouchers['day_1'] > 0 ? $vouchers['day_1'] : '';
-        $this->voucher_day_2 = $vouchers['day_2'] > 0 ? $vouchers['day_2'] : '';
-        $this->voucher_day_3 = $vouchers['day_3'] > 0 ? $vouchers['day_3'] : '';
-        $this->voucher_day_4 = $vouchers['day_4'] > 0 ? $vouchers['day_4'] : '';
+        $this->showMemberForm = true;
     }
 
     public function saveMember()
@@ -269,16 +481,11 @@ class BandManagement extends Component
             'remarks' => 'nullable|string',
         ]);
 
-        // Bühnen-Vorgaben laden
         $stage = $this->selectedBand->stage;
-
-        // Backstage-Access basierend auf Bühne und Auftrittstagen setzen
         $backstageAccess = $this->calculateBackstageAccess($stage);
-
-        // Voucher basierend auf Bühne und Auftrittstagen setzen
         $vouchers = $this->calculateVouchers($stage);
 
-        Person::create([
+        $member = Person::create([
             'first_name' => $this->first_name,
             'last_name' => $this->last_name,
             'present' => $this->present,
@@ -295,39 +502,105 @@ class BandManagement extends Component
             'year' => $this->selectedBand->year,
         ]);
 
-        // All-present Status aktualisieren
-        $this->selectedBand->updateAllPresentStatus();
+        // Background processing für Status Update
+        dispatch(function () use ($member) {
+            $member->band->updateAllPresentStatus();
+        })->afterResponse();
 
-        // Band-Mitglieder neu laden
-        $this->selectedBand = Band::with(['members', 'vehiclePlates'])->find($this->selectedBand->id);
-
+        $this->smartRefresh(true, true);
         $this->showMemberForm = false;
         $this->resetMemberForm();
         session()->flash('message', 'Mitglied wurde erfolgreich hinzugefügt!');
     }
 
-    // Hilfsmethoden für Bühnen-Vorgaben
+    /**
+     * Optimierter Presence Toggle mit Batch Updates
+     */
+    public function toggleMemberPresence($memberId)
+    {
+        DB::transaction(function () use ($memberId) {
+            $member = Person::select(['id', 'present', 'band_id'])
+                ->findOrFail($memberId);
+
+            $member->update(['present' => !$member->present]);
+
+            // Background processing für Band-Status
+            dispatch(function () use ($member) {
+                $member->band->updateAllPresentStatus();
+            })->afterResponse();
+        });
+
+        $this->smartRefresh(true, true);
+    }
+
+    /**
+     * Batch Update für alle Mitglieder
+     */
+    public function updateAllMembersPresence($bandId, $present = true)
+    {
+        DB::transaction(function () use ($bandId, $present) {
+            Person::where('band_id', $bandId)
+                ->where('is_duplicate', false)
+                ->update([
+                    'present' => $present,
+                    'updated_at' => now()
+                ]);
+
+            $band = Band::find($bandId);
+            $band->updateAllPresentStatus();
+        });
+
+        $this->smartRefresh(true, true);
+
+        $statusText = $present ? 'anwesend' : 'abwesend';
+        session()->flash('message', "Alle Mitglieder wurden als {$statusText} markiert!");
+    }
+
+    // ===== HELPER METHODS (OPTIMIERT) =====
+
+    private function closeAllModals()
+    {
+        $this->showCreateForm = false;
+        $this->showEditForm = false;
+        $this->showMemberForm = false;
+        $this->showEditMemberForm = false;
+        $this->showVehicleForm = false;
+        $this->showGuestForm = false;
+    }
+
+    private function loadStageDefaults()
+    {
+        if (!$this->selectedBand || !$this->selectedBand->stage) {
+            return;
+        }
+
+        $stage = $this->selectedBand->stage;
+        $backstageAccess = $this->calculateBackstageAccess($stage);
+        $vouchers = $this->calculateVouchers($stage);
+
+        $this->backstage_day_1 = $backstageAccess['day_1'];
+        $this->backstage_day_2 = $backstageAccess['day_2'];
+        $this->backstage_day_3 = $backstageAccess['day_3'];
+        $this->backstage_day_4 = $backstageAccess['day_4'];
+
+        $this->voucher_day_1 = $vouchers['day_1'] > 0 ? $vouchers['day_1'] : '';
+        $this->voucher_day_2 = $vouchers['day_2'] > 0 ? $vouchers['day_2'] : '';
+        $this->voucher_day_3 = $vouchers['day_3'] > 0 ? $vouchers['day_3'] : '';
+        $this->voucher_day_4 = $vouchers['day_4'] > 0 ? $vouchers['day_4'] : '';
+    }
+
     private function calculateBackstageAccess($stage)
     {
-        $access = [
-            'day_1' => false,
-            'day_2' => false,
-            'day_3' => false,
-            'day_4' => false,
-        ];
+        $access = array_fill_keys(['day_1', 'day_2', 'day_3', 'day_4'], false);
 
-        if ($stage->hasBackstageAllDays()) {
-            // Backstage an allen Tagen
-            $access['day_1'] = true;
-            $access['day_2'] = true;
-            $access['day_3'] = true;
-            $access['day_4'] = true;
-        } else {
-            // Nur an Auftrittstagen
-            if ($this->selectedBand->plays_day_1) $access['day_1'] = true;
-            if ($this->selectedBand->plays_day_2) $access['day_2'] = true;
-            if ($this->selectedBand->plays_day_3) $access['day_3'] = true;
-            if ($this->selectedBand->plays_day_4) $access['day_4'] = true;
+        if ($stage->backstage_all_days ?? false) {
+            return array_fill_keys(['day_1', 'day_2', 'day_3', 'day_4'], true);
+        }
+
+        foreach ([1, 2, 3, 4] as $day) {
+            if ($this->selectedBand->{"plays_day_{$day}"}) {
+                $access["day_{$day}"] = true;
+            }
         }
 
         return $access;
@@ -335,27 +608,43 @@ class BandManagement extends Component
 
     private function calculateVouchers($stage)
     {
-        $vouchers = [
-            'day_1' => 0,
-            'day_2' => 0,
-            'day_3' => 0,
-            'day_4' => 0,
-        ];
+        $vouchers = array_fill_keys(['day_1', 'day_2', 'day_3', 'day_4'], 0);
+        $voucherAmount = $stage->voucher_amount ?? 0;
 
-        $voucherAmount = $stage->getVoucherAmount();
-
-        // Voucher nur an Auftrittstagen
-        if ($this->selectedBand->plays_day_1) $vouchers['day_1'] = $voucherAmount;
-        if ($this->selectedBand->plays_day_2) $vouchers['day_2'] = $voucherAmount;
-        if ($this->selectedBand->plays_day_3) $vouchers['day_3'] = $voucherAmount;
-        if ($this->selectedBand->plays_day_4) $vouchers['day_4'] = $voucherAmount;
+        foreach ([1, 2, 3, 4] as $day) {
+            if ($this->selectedBand->{"plays_day_{$day}"}) {
+                $vouchers["day_{$day}"] = $voucherAmount;
+            }
+        }
 
         return $vouchers;
     }
 
+    // ===== MEMBER CRUD - COMPLETE (OPTIMIERT) =====
+
     public function editMember($memberId)
     {
-        $this->editingMember = Person::findOrFail($memberId);
+        // Optimierte Einzelmitglied-Abfrage
+        $this->editingMember = Person::select([
+            'id',
+            'first_name',
+            'last_name',
+            'present',
+            'backstage_day_1',
+            'backstage_day_2',
+            'backstage_day_3',
+            'backstage_day_4',
+            'voucher_day_1',
+            'voucher_day_2',
+            'voucher_day_3',
+            'voucher_day_4',
+            'remarks',
+            'band_id'
+        ])->findOrFail($memberId);
+
+        $this->closeAllModals();
+
+        // Alle Felder setzen
         $this->first_name = $this->editingMember->first_name;
         $this->last_name = $this->editingMember->last_name;
         $this->present = $this->editingMember->present;
@@ -368,6 +657,7 @@ class BandManagement extends Component
         $this->voucher_day_3 = $this->editingMember->voucher_day_3;
         $this->voucher_day_4 = $this->editingMember->voucher_day_4;
         $this->remarks = $this->editingMember->remarks;
+
         $this->showEditMemberForm = true;
     }
 
@@ -383,7 +673,8 @@ class BandManagement extends Component
             'remarks' => 'nullable|string',
         ]);
 
-        $this->editingMember->update([
+        // Optimiertes Update mit nur geänderten Feldern
+        $updateData = [
             'first_name' => $this->first_name,
             'last_name' => $this->last_name,
             'present' => $this->present,
@@ -396,14 +687,18 @@ class BandManagement extends Component
             'voucher_day_3' => $this->voucher_day_3 ?: 0,
             'voucher_day_4' => $this->voucher_day_4 ?: 0,
             'remarks' => $this->remarks,
-        ]);
+        ];
 
-        // All-present Status aktualisieren
-        $this->selectedBand->updateAllPresentStatus();
+        DB::transaction(function () use ($updateData) {
+            $this->editingMember->update($updateData);
 
-        // Band-Mitglieder neu laden
-        $this->selectedBand = Band::with(['members', 'vehiclePlates'])->find($this->selectedBand->id);
+            // Background processing für Band-Status
+            dispatch(function () {
+                $this->editingMember->band->updateAllPresentStatus();
+            })->afterResponse();
+        });
 
+        $this->smartRefresh(true, true);
         $this->showEditMemberForm = false;
         $this->resetMemberForm();
         session()->flash('message', 'Mitglied wurde erfolgreich aktualisiert!');
@@ -411,39 +706,54 @@ class BandManagement extends Component
 
     public function deleteMember($memberId)
     {
-        Person::findOrFail($memberId)->delete();
+        DB::transaction(function () use ($memberId) {
+            $member = Person::select(['id', 'first_name', 'last_name', 'band_id'])
+                ->findOrFail($memberId);
 
-        // All-present Status aktualisieren
-        $this->selectedBand->updateAllPresentStatus();
+            $memberName = $member->first_name . ' ' . $member->last_name;
+            $bandId = $member->band_id;
 
-        // Band-Mitglieder neu laden
-        $this->selectedBand = Band::with(['members', 'vehiclePlates'])->find($this->selectedBand->id);
+            // Erst Gäste löschen falls vorhanden
+            Person::where('responsible_person_id', $member->id)->delete();
 
-        session()->flash('message', 'Mitglied wurde erfolgreich entfernt!');
+            // Dann das Mitglied selbst
+            $member->delete();
+
+            // Background processing für Band-Status
+            dispatch(function () use ($bandId) {
+                if ($band = Band::find($bandId)) {
+                    $band->updateAllPresentStatus();
+                }
+            })->afterResponse();
+
+            $this->smartRefresh(true, true);
+            session()->flash('message', "{$memberName} wurde erfolgreich entfernt!");
+        });
     }
 
-    // Vehicle CRUD Methods
+    // ===== VEHICLE CRUD (OPTIMIERT) =====
+
     public function addVehicle($bandId)
     {
-        $this->selectedBand = Band::findOrFail($bandId);
-        $this->showVehicleForm = true;
+        $this->selectedBand = Band::select(['id', 'band_name'])
+            ->findOrFail($bandId);
+        $this->closeAllModals();
         $this->license_plate = '';
+        $this->showVehicleForm = true;
     }
 
     public function saveVehicle()
     {
         $this->validate([
-            'license_plate' => 'required|string|max:20',
+            'license_plate' => 'required|string|max:20|unique:vehicle_plates,license_plate',
         ]);
 
         VehiclePlate::create([
-            'license_plate' => $this->license_plate,
+            'license_plate' => strtoupper(trim($this->license_plate)),
             'band_id' => $this->selectedBand->id,
         ]);
 
-        // Band-Daten neu laden
-        $this->selectedBand = Band::with(['members', 'vehiclePlates'])->find($this->selectedBand->id);
-
+        $this->smartRefresh(true);
         $this->showVehicleForm = false;
         $this->license_plate = '';
         session()->flash('message', 'KFZ-Kennzeichen wurde erfolgreich hinzugefügt!');
@@ -451,28 +761,55 @@ class BandManagement extends Component
 
     public function deleteVehicle($vehicleId)
     {
-        VehiclePlate::findOrFail($vehicleId)->delete();
+        DB::transaction(function () use ($vehicleId) {
+            $vehicle = VehiclePlate::select(['id', 'license_plate'])
+                ->findOrFail($vehicleId);
 
-        // Band-Daten neu laden
-        $this->selectedBand = Band::with(['members', 'vehiclePlates'])->find($this->selectedBand->id);
+            $licensePlate = $vehicle->license_plate;
+            $vehicle->delete();
 
-        session()->flash('message', 'KFZ-Kennzeichen wurde erfolgreich entfernt!');
+            $this->smartRefresh(true);
+            session()->flash('message', "KFZ-Kennzeichen {$licensePlate} wurde erfolgreich entfernt!");
+        });
     }
 
-    // Guest CRUD Methods
+    public function cancelVehicleForm()
+    {
+        $this->showVehicleForm = false;
+        $this->license_plate = '';
+    }
+
+    // ===== GUEST CRUD (OPTIMIERT) =====
+
     public function addGuest($memberId)
     {
-        $this->selectedMember = Person::findOrFail($memberId);
+        // Optimierte Mitglieder-Abfrage mit Guest-Check
+        $this->selectedMember = Person::select([
+            'id',
+            'first_name',
+            'last_name',
+            'band_id'
+        ])
+            ->with([
+                'band:id,band_name,stage_id,plays_day_1,plays_day_2,plays_day_3,plays_day_4,year',
+                'band.stage:id,name,guest_allowed'
+            ])
+            ->withCount('responsibleFor as guests_count')
+            ->findOrFail($memberId);
 
         // Prüfen ob bereits ein Gast existiert
-        if ($this->selectedMember->guest) {
+        if ($this->selectedMember->guests_count > 0) {
             session()->flash('error', 'Dieses Mitglied hat bereits einen Gast!');
             return;
         }
 
-        $this->showGuestForm = true;
+        // Band-Daten für Guest-Erstellung laden
+        $this->selectedBand = $this->selectedMember->band;
+
+        $this->closeAllModals();
         $this->guest_first_name = '';
         $this->guest_last_name = '';
+        $this->showGuestForm = true;
     }
 
     public function saveGuest()
@@ -482,56 +819,55 @@ class BandManagement extends Component
             'guest_last_name' => 'required|string|max:255',
         ]);
 
-        // Prüfen ob das Mitglied bereits einen Gast hat
-        if ($this->selectedMember->guest) {
+        // Double-check für Race Conditions
+        $existingGuestCount = Person::where('responsible_person_id', $this->selectedMember->id)
+            ->count();
+
+        if ($existingGuestCount > 0) {
             session()->flash('error', 'Dieses Mitglied hat bereits einen Gast!');
             return;
         }
 
-        // Bühnen-Vorgaben für Gast laden (falls Gäste erlaubt)
-        $stage = $this->selectedBand->stage;
-        $guestBackstageAccess = [];
-        $guestVouchers = [];
+        DB::transaction(function () {
+            // Bühnen-Vorgaben für Gast berechnen
+            $stage = $this->selectedBand->stage;
+            $guestBackstageAccess = [];
+            $guestVouchers = [];
 
-        if ($stage->guest_allowed) {
-            // Gast bekommt nur an Auftrittstagen Zugang (nie alle Tage)
-            $guestBackstageAccess = [
-                'day_1' => $this->selectedBand->plays_day_1,
-                'day_2' => $this->selectedBand->plays_day_2,
-                'day_3' => $this->selectedBand->plays_day_3,
-                'day_4' => $this->selectedBand->plays_day_4,
-            ];
+            if ($stage && $stage->guest_allowed) {
+                // Gast bekommt nur an Auftrittstagen Zugang
+                foreach ([1, 2, 3, 4] as $day) {
+                    $guestBackstageAccess["day_{$day}"] = $this->selectedBand->{"plays_day_{$day}"};
+                    $guestVouchers["day_{$day}"] = 0; // Gäste bekommen standardmäßig keine Voucher
+                }
+            } else {
+                // Keine Berechtigung wenn Stage keine Gäste erlaubt
+                foreach ([1, 2, 3, 4] as $day) {
+                    $guestBackstageAccess["day_{$day}"] = false;
+                    $guestVouchers["day_{$day}"] = 0;
+                }
+            }
 
-            // Gast bekommt keine Voucher (Standard-Verhalten)
-            $guestVouchers = [
-                'day_1' => 0,
-                'day_2' => 0,
-                'day_3' => 0,
-                'day_4' => 0,
-            ];
-        }
+            Person::create([
+                'first_name' => $this->guest_first_name,
+                'last_name' => $this->guest_last_name,
+                'present' => false,
+                'backstage_day_1' => $guestBackstageAccess['day_1'] ?? false,
+                'backstage_day_2' => $guestBackstageAccess['day_2'] ?? false,
+                'backstage_day_3' => $guestBackstageAccess['day_3'] ?? false,
+                'backstage_day_4' => $guestBackstageAccess['day_4'] ?? false,
+                'voucher_day_1' => $guestVouchers['day_1'] ?? 0,
+                'voucher_day_2' => $guestVouchers['day_2'] ?? 0,
+                'voucher_day_3' => $guestVouchers['day_3'] ?? 0,
+                'voucher_day_4' => $guestVouchers['day_4'] ?? 0,
+                'remarks' => 'Gast von ' . $this->selectedMember->first_name . ' ' . $this->selectedMember->last_name,
+                'band_id' => $this->selectedBand->id,
+                'responsible_person_id' => $this->selectedMember->id,
+                'year' => $this->selectedBand->year,
+            ]);
+        });
 
-        Person::create([
-            'first_name' => $this->guest_first_name,
-            'last_name' => $this->guest_last_name,
-            'present' => false,
-            'backstage_day_1' => $guestBackstageAccess['day_1'] ?? false,
-            'backstage_day_2' => $guestBackstageAccess['day_2'] ?? false,
-            'backstage_day_3' => $guestBackstageAccess['day_3'] ?? false,
-            'backstage_day_4' => $guestBackstageAccess['day_4'] ?? false,
-            'voucher_day_1' => $guestVouchers['day_1'] ?? 0,
-            'voucher_day_2' => $guestVouchers['day_2'] ?? 0,
-            'voucher_day_3' => $guestVouchers['day_3'] ?? 0,
-            'voucher_day_4' => $guestVouchers['day_4'] ?? 0,
-            'remarks' => 'Gast von ' . $this->selectedMember->first_name . ' ' . $this->selectedMember->last_name,
-            'band_id' => $this->selectedBand->id,
-            'responsible_person_id' => $this->selectedMember->id, // Verknüpfung zum Band-Mitglied
-            'year' => $this->selectedBand->year,
-        ]);
-
-        // Band-Daten neu laden
-        $this->selectedBand = Band::with(['members', 'vehiclePlates'])->find($this->selectedBand->id);
-
+        $this->smartRefresh(true, true);
         $this->showGuestForm = false;
         $this->guest_first_name = '';
         $this->guest_last_name = '';
@@ -540,15 +876,154 @@ class BandManagement extends Component
 
     public function deleteGuest($guestId)
     {
-        Person::findOrFail($guestId)->delete();
+        DB::transaction(function () use ($guestId) {
+            $guest = Person::select(['id', 'first_name', 'last_name'])
+                ->where('responsible_person_id', '!=', null)
+                ->findOrFail($guestId);
 
-        // Band-Daten neu laden
-        $this->selectedBand = Band::with(['members', 'vehiclePlates'])->find($this->selectedBand->id);
+            $guestName = $guest->first_name . ' ' . $guest->last_name;
+            $guest->delete();
 
-        session()->flash('message', 'Gast wurde erfolgreich entfernt!');
+            $this->smartRefresh(true, true);
+            session()->flash('message', "Gast {$guestName} wurde erfolgreich entfernt!");
+        });
     }
 
-    // Helper Methods
+    public function cancelGuestForm()
+    {
+        $this->showGuestForm = false;
+        $this->guest_first_name = '';
+        $this->guest_last_name = '';
+        $this->selectedMember = null;
+    }
+
+    // ===== BULK OPERATIONS (BONUS) =====
+
+    /**
+     * Alle Mitglieder einer Band als anwesend markieren
+     */
+    public function markAllMembersPresent($bandId)
+    {
+        $this->updateAllMembersPresence($bandId, true);
+    }
+
+    /**
+     * Alle Mitglieder einer Band als abwesend markieren
+     */
+    public function markAllMembersAbsent($bandId)
+    {
+        $this->updateAllMembersPresence($bandId, false);
+    }
+
+    /**
+     * Optimierte Voucher-Neuberechnung für alle Mitglieder
+     */
+    public function recalculateVouchersForBand($bandId)
+    {
+        DB::transaction(function () use ($bandId) {
+            $band = Band::with('stage', 'members')->findOrFail($bandId);
+            $stage = $band->stage;
+
+            if (!$stage) return;
+
+            $voucherAmount = $stage->voucher_amount ?? 0;
+
+            foreach ($band->members as $member) {
+                $updateData = [];
+
+                // Voucher nur an Spieltagen
+                foreach ([1, 2, 3, 4] as $day) {
+                    $updateData["voucher_day_{$day}"] = $band->{"plays_day_{$day}"} ? $voucherAmount : 0;
+                }
+
+                $member->update($updateData);
+            }
+        });
+
+        $this->smartRefresh(true);
+        session()->flash('message', 'Voucher für alle Mitglieder wurden neu berechnet!');
+    }
+
+    // ===== ADVANCED SEARCH & FILTERING =====
+
+    /**
+     * Erweiterte Suchoptionen
+     */
+    public function searchInMembers($bandId, $searchTerm)
+    {
+        if (!$searchTerm || strlen($searchTerm) < 2) {
+            return $this->selectedBand->members;
+        }
+
+        return $this->selectedBand->members->filter(function ($member) use ($searchTerm) {
+            $fullName = strtolower($member->first_name . ' ' . $member->last_name);
+            $search = strtolower($searchTerm);
+
+            return str_contains($fullName, $search) ||
+                str_contains(strtolower($member->remarks ?? ''), $search);
+        });
+    }
+
+    // ===== VALIDATION HELPERS =====
+
+    /**
+     * Erweiterte Band-Validierung
+     */
+    private function validateBandConstraints()
+    {
+        $rules = [
+            'band_name' => 'required|string|max:255',
+            'stage_id' => 'required|exists:stages,id',
+            'travel_costs' => 'nullable|numeric|min:0|max:99999.99',
+        ];
+
+        // Unique Constraint für Band + Jahr
+        if ($this->editingBand) {
+            $rules['band_name'] .= '|unique:bands,band_name,' . $this->editingBand->id . ',id,year,' . $this->year;
+        } else {
+            $rules['band_name'] .= '|unique:bands,band_name,NULL,id,year,' . $this->year;
+        }
+
+        // Mindestens ein Spieltag muss ausgewählt sein
+        $this->validate($rules);
+
+        if (!($this->plays_day_1 || $this->plays_day_2 || $this->plays_day_3 || $this->plays_day_4)) {
+            $this->addError('plays_day_1', 'Mindestens ein Spieltag muss ausgewählt werden.');
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Stage-spezifische Validierung
+     */
+    private function validateStageConstraints($stageId)
+    {
+        $stage = collect($this->getCachedStages())->firstWhere('id', $stageId);
+
+        if (!$stage) return false;
+
+        // Beispiel: Maximale Anzahl Bands pro Bühne prüfen
+        $existingBandsCount = Band::where('stage_id', $stageId)
+            ->where('year', $this->year)
+            ->when($this->editingBand, function ($q) {
+                return $q->where('id', '!=', $this->editingBand->id);
+            })
+            ->count();
+
+        $maxBandsPerStage = $stage->max_bands ?? 999; // Aus Stage-Model
+
+        if ($existingBandsCount >= $maxBandsPerStage) {
+            $this->addError('stage_id', "Diese Bühne kann maximal {$maxBandsPerStage} Bands haben.");
+            return false;
+        }
+
+        return true;
+    }
+
+    // ===== FORM RESET METHODS =====
+
     public function resetBandForm()
     {
         $this->band_name = '';
@@ -593,22 +1068,33 @@ class BandManagement extends Component
         $this->resetMemberForm();
     }
 
-    public function cancelVehicleForm()
-    {
-        $this->showVehicleForm = false;
-        $this->license_plate = '';
-    }
-
-    public function cancelGuestForm()
-    {
-        $this->showGuestForm = false;
-        $this->guest_first_name = '';
-        $this->guest_last_name = '';
-    }
-
     public function backToBandList()
     {
         $this->selectedBand = null;
+        $this->closeAllModals();
         $this->resetMemberForm();
+    }
+
+    // ===== DEBUG METHODS =====
+
+    private function logQueries()
+    {
+        if (app()->environment('local')) {
+            $queries = DB::getQueryLog();
+            \Log::info('Band Management Queries:', [
+                'search_term' => $this->search,
+                'total_queries' => count($queries),
+                'queries' => array_map(function ($query) {
+                    return [
+                        'sql' => $query['query'],
+                        'time' => $query['time'] . 'ms',
+                        'bindings' => $query['bindings']
+                    ];
+                }, $queries)
+            ]);
+
+            // Reset query log for next request
+            DB::flushQueryLog();
+        }
     }
 }

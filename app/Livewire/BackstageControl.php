@@ -12,7 +12,7 @@ use App\Models\Stage;
 use App\Models\VoucherPurchase;
 use App\Models\Settings;
 use App\Models\ChangeLog;
-use App\Traits\ManagesVehiclePlates;
+
 use Illuminate\Support\Facades\DB;
 
 // Service Imports
@@ -20,8 +20,15 @@ use App\Services\BackstageSearchService;
 use App\Services\VoucherService;
 use App\Services\BandStatusService;
 
+// Trait Imports
+use App\Traits\ManagesGuests;
+use App\Traits\ManagesVehiclePlates;
+
 class BackstageControl extends Component
 {
+
+    use ManagesVehiclePlates, ManagesGuests;
+
     public $search = '';
     public $bandSearch = '';
     public $searchResults = [];
@@ -51,8 +58,6 @@ class BackstageControl extends Component
 
     // NEU: Processing Flag für Voucher
     public $isProcessingVoucher = false;
-
-    use ManagesVehiclePlates;
 
     // Caching für bessere Performance
     private $cachedSettings = null;
@@ -609,7 +614,17 @@ class BackstageControl extends Component
     // Gäste-Modal
     public function showGuests($personId)
     {
-        $this->selectedPersonForGuests = Person::with('responsibleFor')->findOrFail($personId);
+        $this->selectedPersonForGuests = Person::with([
+            'responsibleFor' => function ($query) {
+                // Stabile, konsistente Sortierung
+                $query->orderBy('first_name', 'asc')
+                    ->orderBy('last_name', 'asc')
+                    ->orderBy('id', 'asc'); // Fallback für identische Namen
+            },
+            'group',
+            'band'
+        ])->findOrFail($personId);
+
         $this->showGuestsModal = true;
     }
 
@@ -617,6 +632,9 @@ class BackstageControl extends Component
     {
         $this->showGuestsModal = false;
         $this->selectedPersonForGuests = null;
+
+        // Session-Flash Messages löschen
+        session()->forget(['success', 'error', 'warning', 'info']);
     }
 
     // Person-spezifischer Voucher-Kauf
@@ -931,23 +949,6 @@ class BackstageControl extends Component
     ');
     }
 
-    public function clearBandSearch()
-    {
-        $this->bandSearch = '';
-        $this->bandSearchResults = [];
-        $this->bandSearchResultsCache = [];
-        $this->lastBandSearchTerm = '';
-        $this->selectedBandFromSearch = null;
-        $this->bandMembers = [];
-
-        $this->js('
-        const input = document.getElementById("band-search-input");
-        if (input) {
-            input.value = "";
-            input.focus();
-        }
-    ');
-    }
 
     // Focus-Methoden
     public function focusSearch()
