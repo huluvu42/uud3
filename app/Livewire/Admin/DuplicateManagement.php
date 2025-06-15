@@ -9,12 +9,11 @@ use Illuminate\Support\Facades\DB;
 
 class DuplicateManagement extends Component
 {
-    public $potentialDuplicates = [];
-    public $markedDuplicates = [];
+    // KEINE COLLECTIONS ALS PROPERTIES - NUR PRIMITIVE DATENTYPEN
     public $selectedYear;
     public $showMarkedDuplicates = false;
     public $isLoading = false;
-    
+
     // Statistiken
     public $stats = [
         'total_persons' => 0,
@@ -26,42 +25,23 @@ class DuplicateManagement extends Component
     public function mount()
     {
         $this->selectedYear = now()->year;
-        $this->loadDuplicates();
         $this->loadStats();
     }
 
     public function updatedSelectedYear()
     {
-        $this->loadDuplicates();
         $this->loadStats();
-    }
-
-    public function loadDuplicates()
-    {
-        $this->isLoading = true;
-        
-        // Potentielle Duplikate finden
-        $this->potentialDuplicates = Person::findPotentialDuplicates($this->selectedYear);
-        
-        // Bereits markierte Duplikate
-        $this->markedDuplicates = Person::duplicates()
-            ->with(['band', 'group', 'duplicateMarkedBy'])
-            ->where('year', $this->selectedYear)
-            ->orderBy('duplicate_marked_at', 'desc')
-            ->get()
-            ->groupBy(function($person) {
-                return $person->first_name . ' ' . $person->last_name;
-            });
-        
-        $this->isLoading = false;
     }
 
     public function loadStats()
     {
         $this->stats['total_persons'] = Person::where('year', $this->selectedYear)->count();
         $this->stats['marked_duplicates'] = Person::duplicates()->where('year', $this->selectedYear)->count();
-        $this->stats['duplicate_groups'] = count($this->potentialDuplicates);
-        $this->stats['potential_duplicates'] = $this->potentialDuplicates->sum('count') - $this->stats['duplicate_groups']; // Minus das Original pro Gruppe
+
+        // Potentielle Duplikate berechnen ohne sie zu speichern
+        $potentialDuplicates = Person::findPotentialDuplicates($this->selectedYear);
+        $this->stats['duplicate_groups'] = $potentialDuplicates->count();
+        $this->stats['potential_duplicates'] = $potentialDuplicates->sum('count') - $this->stats['duplicate_groups'];
     }
 
     public function markAsDuplicate($personId, $reason = null)
@@ -74,12 +54,11 @@ class DuplicateManagement extends Component
 
         $reason = $reason ?: 'Manuell als Duplikat markiert';
         $person->markAsDuplicate($reason);
-        
-        // Neu laden
-        $this->loadDuplicates();
-        $this->loadStats();
-        
+
         session()->flash('success', $person->full_name . ' wurde als Duplikat markiert.');
+
+        // Redirect zur gleichen Seite
+        return redirect()->route('admin.duplicates', ['year' => $this->selectedYear]);
     }
 
     public function unmarkAsDuplicate($personId)
@@ -91,32 +70,35 @@ class DuplicateManagement extends Component
         }
 
         $person->unmarkAsDuplicate();
-        
-        // Neu laden
-        $this->loadDuplicates();
-        $this->loadStats();
-        
+
         session()->flash('success', $person->full_name . ' ist nicht mehr als Duplikat markiert.');
+
+        // Redirect zur gleichen Seite
+        return redirect()->route('admin.duplicates', ['year' => $this->selectedYear]);
     }
 
     public function markAllInGroup($groupPersons, $keepPersonId)
     {
         $marked = 0;
-        foreach ($groupPersons as $person) {
-            if ($person['id'] != $keepPersonId && !$person['is_duplicate']) {
-                $personObj = Person::find($person['id']);
+        foreach ($groupPersons as $personData) {
+            $personId = $personData['id'];
+            $isCurrentlyDuplicate = $personData['is_duplicate'] ?? false;
+
+            if ($personId != $keepPersonId && !$isCurrentlyDuplicate) {
+                $personObj = Person::find($personId);
                 if ($personObj) {
-                    $personObj->markAsDuplicate('Automatisch markiert - Duplikat von ' . $person['first_name'] . ' ' . $person['last_name']);
+                    $personObj->markAsDuplicate('Automatisch markiert - Duplikat von ' . $personData['first_name'] . ' ' . $personData['last_name']);
                     $marked++;
                 }
             }
         }
-        
+
         if ($marked > 0) {
-            $this->loadDuplicates();
-            $this->loadStats();
             session()->flash('success', "$marked Personen wurden als Duplikate markiert.");
         }
+
+        // Redirect zur gleichen Seite
+        return redirect()->route('admin.duplicates', ['year' => $this->selectedYear]);
     }
 
     public function toggleShowMarkedDuplicates()
@@ -126,13 +108,35 @@ class DuplicateManagement extends Component
 
     public function refreshData()
     {
-        $this->loadDuplicates();
         $this->loadStats();
         session()->flash('success', 'Daten wurden aktualisiert.');
     }
 
     public function render()
     {
-        return view('livewire.admin.duplicate-management');
+        // Daten DIREKT im Render laden - NICHT als Properties speichern
+        $potentialDuplicates = [];
+        $markedDuplicates = collect();
+
+        if (!$this->showMarkedDuplicates) {
+            // Potentielle Duplikate - als Array für Template
+            $potentialDuplicatesCollection = Person::findPotentialDuplicates($this->selectedYear);
+            $potentialDuplicates = $potentialDuplicatesCollection->toArray();
+        } else {
+            // Markierte Duplikate - direkt als Collection für Template
+            $markedDuplicates = Person::duplicates()
+                ->with(['band', 'group', 'duplicateMarkedBy'])
+                ->where('year', $this->selectedYear)
+                ->orderBy('duplicate_marked_at', 'desc')
+                ->get()
+                ->groupBy(function ($person) {
+                    return $person->first_name . ' ' . $person->last_name;
+                });
+        }
+
+        return view('livewire.admin.duplicate-management', [
+            'potentialDuplicates' => $potentialDuplicates,
+            'markedDuplicates' => $markedDuplicates
+        ]);
     }
 }

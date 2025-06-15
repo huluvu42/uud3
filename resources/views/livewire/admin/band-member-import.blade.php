@@ -7,32 +7,29 @@
         function selectBandOption(index, bandId, bandName) {
             // Livewire-Methode aufrufen
             @this.call('selectBand', index, bandId);
-
-            // Such-Input leeren
-            @this.set('bandSearchTerms.' + index, '');
-
-            // Visuelles Feedback
-            console.log('Band ausgewählt:', bandName, 'für Index:', index);
         }
+
+        // Event-Listener für Dropdown-Schließung
+        document.addEventListener('livewire:init', function() {
+            Livewire.on('dropdown-close', (event) => {
+                const index = event.index;
+                const dropdown = document.getElementById(`band-dropdown-${index}`);
+                if (dropdown) {
+                    dropdown.classList.add('hidden');
+                }
+            });
+        });
 
         // Event-Listener für bessere UX
         document.addEventListener('DOMContentLoaded', function() {
             // Dropdown schließen bei Klick außerhalb
             document.addEventListener('click', function(e) {
-                if (!e.target.closest('.relative')) {
-                    // Alle Such-Inputs leeren um Dropdowns zu schließen
-                    const searchInputs = document.querySelectorAll('input[placeholder="Band suchen..."]');
-                    searchInputs.forEach(input => {
-                        if (input.value && !input.closest('.relative').querySelector(
-                            '.bg-green-50')) {
-                            // Nur leeren wenn keine Auswahl getroffen wurde
-                            const wireModel = input.getAttribute('wire:model.live.debounce.300ms');
-                            if (wireModel) {
-                                @this.set(wireModel, '');
-                            }
-                        }
-                    });
-                }
+                const dropdowns = document.querySelectorAll('[id^="band-dropdown-"]');
+                dropdowns.forEach(dropdown => {
+                    if (!dropdown.closest('.relative').contains(e.target)) {
+                        dropdown.classList.add('hidden');
+                    }
+                });
             });
         });
     </script>

@@ -3,166 +3,204 @@
 <div class="container mx-auto px-4 py-8">
     @include('partials.navigation')
 
-    <div class="max-w-7xl mx-auto">
-        <!-- Success/Error Messages -->
-        @if (session()->has('success'))
-            <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
-                {{ session('success') }}
-            </div>
-        @endif
-
-        @if (session()->has('error'))
-            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-                {{ session('error') }}
-            </div>
-        @endif
-
+    <div class="mx-auto mt-8 max-w-7xl">
         <!-- Header -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-bold">Duplikat-Verwaltung</h2>
+        <div class="mb-6 rounded-lg bg-white p-6 shadow-md">
+            <div class="mb-4 flex items-center justify-between">
+                <h2 class="text-2xl font-bold">🔍 Duplikat Management</h2>
                 <div class="flex items-center space-x-4">
-                    <select 
-                        wire:model="selectedYear"
-                        class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                        @for($year = now()->year; $year >= 2020; $year--)
-                            <option value="{{ $year }}">{{ $year }}</option>
-                        @endfor
-                    </select>
-                    <button 
-                        wire:click="refreshData"
-                        class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                        wire:loading.attr="disabled"
-                    >
-                        <span wire:loading.remove wire:target="refreshData">🔄 Aktualisieren</span>
-                        <span wire:loading wire:target="refreshData">Lädt...</span>
+                    <!-- Jahr-Auswahl -->
+                    <div class="flex items-center space-x-2">
+                        <label class="text-sm font-medium text-gray-700">Jahr:</label>
+                        <select wire:model.live="selectedYear"
+                            class="rounded border border-gray-300 px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            @for ($year = 2020; $year <= now()->year + 1; $year++)
+                                <option value="{{ $year }}">{{ $year }}</option>
+                            @endfor
+                        </select>
+                    </div>
+
+                    <!-- Aktualisieren Button -->
+                    <button wire:click="refreshData" class="rounded bg-blue-500 px-4 py-2 text-white hover:bg-blue-600">
+                        🔄 Aktualisieren
                     </button>
                 </div>
             </div>
 
             <!-- Statistiken -->
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                <div class="text-center p-4 bg-blue-50 rounded">
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+                <div class="rounded bg-blue-50 p-4 text-center">
                     <div class="text-2xl font-bold text-blue-600">{{ $stats['total_persons'] }}</div>
-                    <div class="text-sm text-gray-600">Gesamte Personen</div>
+                    <div class="text-sm text-blue-700">Personen gesamt</div>
                 </div>
-                <div class="text-center p-4 bg-yellow-50 rounded">
+                <div class="rounded bg-yellow-50 p-4 text-center">
                     <div class="text-2xl font-bold text-yellow-600">{{ $stats['duplicate_groups'] }}</div>
-                    <div class="text-sm text-gray-600">Duplikat-Gruppen</div>
+                    <div class="text-sm text-yellow-700">Duplikat-Gruppen</div>
                 </div>
-                <div class="text-center p-4 bg-orange-50 rounded">
+                <div class="rounded bg-orange-50 p-4 text-center">
                     <div class="text-2xl font-bold text-orange-600">{{ $stats['potential_duplicates'] }}</div>
-                    <div class="text-sm text-gray-600">Potentielle Duplikate</div>
+                    <div class="text-sm text-orange-700">Potentielle Duplikate</div>
                 </div>
-                <div class="text-center p-4 bg-red-50 rounded">
+                <div class="rounded bg-red-50 p-4 text-center">
                     <div class="text-2xl font-bold text-red-600">{{ $stats['marked_duplicates'] }}</div>
-                    <div class="text-sm text-gray-600">Markierte Duplikate</div>
+                    <div class="text-sm text-red-700">Markierte Duplikate</div>
                 </div>
             </div>
 
-            <!-- Tab-Navigation -->
-            <div class="flex space-x-4 border-b">
-                <button 
-                    wire:click="$set('showMarkedDuplicates', false)"
-                    class="px-4 py-2 {{ !$showMarkedDuplicates ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500' }}"
-                >
-                    📋 Potentielle Duplikate ({{ $stats['duplicate_groups'] }})
-                </button>
-                <button 
-                    wire:click="$set('showMarkedDuplicates', true)"
-                    class="px-4 py-2 {{ $showMarkedDuplicates ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500' }}"
-                >
-                    🏷️ Markierte Duplikate ({{ $stats['marked_duplicates'] }})
+            <!-- Toggle Button -->
+            <div class="mt-4 flex justify-center">
+                <button wire:click="toggleShowMarkedDuplicates"
+                    class="{{ $showMarkedDuplicates ? 'bg-orange-500 hover:bg-orange-600' : 'bg-green-500 hover:bg-green-600' }} rounded px-6 py-2 text-white">
+                    @if ($showMarkedDuplicates)
+                        📋 Potentielle Duplikate anzeigen
+                    @else
+                        🏷️ Markierte Duplikate anzeigen ({{ $stats['marked_duplicates'] }})
+                    @endif
                 </button>
             </div>
         </div>
 
-        @if($isLoading)
-            <div class="bg-white rounded-lg shadow-md p-8 text-center">
-                <div class="text-gray-500">Lade Duplikate...</div>
+        <!-- Flash Messages -->
+        @if (session()->has('success'))
+            <div class="mb-4 rounded border border-green-400 bg-green-100 px-4 py-3 text-green-700">
+                {{ session('success') }}
             </div>
-        @elseif(!$showMarkedDuplicates)
+        @endif
+
+        @if (session()->has('error'))
+            <div class="mb-4 rounded border border-red-400 bg-red-100 px-4 py-3 text-red-700">
+                {{ session('error') }}
+            </div>
+        @endif
+
+        <!-- Loading Indicator -->
+        @if ($isLoading)
+            <div class="mb-6 rounded-lg bg-blue-50 p-6 text-center">
+                <div class="text-blue-600">Lade Duplikate...</div>
+            </div>
+        @endif
+
+        @if (!$showMarkedDuplicates)
             <!-- Potentielle Duplikate -->
-            @if(count($potentialDuplicates) > 0)
+            @if (count($potentialDuplicates) > 0)
                 <div class="space-y-6">
-                    @foreach($potentialDuplicates as $group)
-                        <div class="bg-white rounded-lg shadow-md p-6">
-                            <div class="flex justify-between items-center mb-4">
-                                <h3 class="text-lg font-semibold text-red-600">
-                                    🔍 {{ $group['name'] }} 
-                                    <span class="text-sm text-gray-500">({{ $group['count'] }} Personen gefunden)</span>
+                    @foreach ($potentialDuplicates as $duplicateGroup)
+                        <div class="rounded-lg bg-white p-6 shadow-md">
+                            <div class="mb-4 flex items-center justify-between">
+                                <h3 class="text-lg font-semibold text-orange-600">
+                                    🔍 {{ $duplicateGroup['name'] }}
+                                    <span class="text-sm text-gray-500">({{ $duplicateGroup['count'] }} Personen
+                                        gefunden)</span>
                                 </h3>
                                 <div class="text-sm text-gray-500">
-                                    Bitte wählen Sie die Originale aus und markieren Sie die Duplikate
+                                    Gleicher Name erkannt
                                 </div>
                             </div>
 
+                            <!-- Aktions-Buttons -->
+                            <div class="mb-4 flex space-x-2">
+                                @php
+                                    // Array-Filter statt Collection-Filter
+                                    $activePersons = array_filter($duplicateGroup['persons'], function ($person) {
+                                        return !$person['is_duplicate'];
+                                    });
+                                @endphp
+
+                                @if (count($activePersons) > 1)
+                                    @foreach ($activePersons as $person)
+                                        <button
+                                            wire:click="markAllInGroup({{ json_encode($duplicateGroup['persons']) }}, {{ $person['id'] }})"
+                                            class="rounded bg-blue-500 px-3 py-1 text-sm text-white hover:bg-blue-600"
+                                            title="Alle anderen als Duplikate markieren, {{ $person['first_name'] }} {{ $person['last_name'] }} (ID: {{ $person['id'] }}) als Original behalten">
+                                            🎯 {{ $person['first_name'] }} {{ $person['last_name'] }} (ID:
+                                            {{ $person['id'] }}) als Original
+                                        </button>
+                                    @endforeach
+                                @endif
+                            </div>
+
+                            <!-- Personen-Tabelle -->
                             <div class="overflow-x-auto">
                                 <table class="min-w-full divide-y divide-gray-200">
                                     <thead class="bg-gray-50">
                                         <tr>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Band</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gruppe</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bemerkung</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Knack ID</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Aktionen</th>
+                                            <th
+                                                class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                                                ID</th>
+                                            <th
+                                                class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                                                Name</th>
+                                            <th
+                                                class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                                                Band</th>
+                                            <th
+                                                class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                                                Gruppe</th>
+                                            <th
+                                                class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                                                Knack ID</th>
+                                            <th
+                                                class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                                                Status</th>
+                                            <th
+                                                class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                                                Erstellt</th>
+                                            <th
+                                                class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                                                Aktionen</th>
                                         </tr>
                                     </thead>
-                                    <tbody class="bg-white divide-y divide-gray-200">
-                                        @foreach($group['persons'] as $person)
-                                            <tr class="{{ $person->is_duplicate ? 'bg-red-50' : 'hover:bg-gray-50' }}">
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm font-mono">{{ $person->id }}</td>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                    {{ $person->first_name }} {{ $person->last_name }}
-                                                </td>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    {{ $person->band->band_name ?? '-' }}
-                                                </td>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    {{ $person->group->name ?? '-' }}
-                                                </td>
-                                                <td class="px-6 py-4 text-sm text-gray-900 max-w-xs">
-                                                    @if($person->remarks)
-                                                        <span class="px-2 py-1 text-xs bg-blue-50 text-blue-800 rounded truncate block">
-                                                            {{ Str::limit($person->remarks, 30) }}
+                                    <tbody class="divide-y divide-gray-200 bg-white">
+                                        @foreach ($duplicateGroup['persons'] as $person)
+                                            <tr
+                                                class="{{ $person['is_duplicate'] ? 'bg-red-50' : 'hover:bg-gray-50' }}">
+                                                <td class="whitespace-nowrap px-6 py-4 font-mono text-sm">
+                                                    {{ $person['id'] }}</td>
+                                                <td class="whitespace-nowrap px-6 py-4 text-sm font-medium">
+                                                    {{ $person['first_name'] }} {{ $person['last_name'] }}
+                                                    @if ($person['present'])
+                                                        <span
+                                                            class="ml-2 rounded-full bg-green-100 px-2 py-1 text-xs text-green-800">
+                                                            ✅ Anwesend
                                                         </span>
-                                                    @else
-                                                        <span class="text-gray-400">-</span>
                                                     @endif
                                                 </td>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                    {{ $person->knack_id ?? '-' }}
+                                                <td class="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                                                    {{ $person['band_name'] ?? '-' }}
                                                 </td>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                                    @if($person->is_duplicate)
-                                                        <span class="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">
+                                                <td class="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                                                    {{ $person['group_name'] ?? '-' }}
+                                                </td>
+                                                <td class="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                                                    {{ $person['knack_id'] ?? '-' }}
+                                                </td>
+                                                <td class="whitespace-nowrap px-6 py-4 text-sm">
+                                                    @if ($person['is_duplicate'])
+                                                        <span
+                                                            class="rounded-full bg-red-100 px-2 py-1 text-xs text-red-800">
                                                             ❌ Duplikat
                                                         </span>
                                                     @else
-                                                        <span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">
+                                                        <span
+                                                            class="rounded-full bg-green-100 px-2 py-1 text-xs text-green-800">
                                                             ✅ Aktiv
                                                         </span>
                                                     @endif
                                                 </td>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                    @if($person->is_duplicate)
-                                                        <button 
-                                                            wire:click="unmarkAsDuplicate({{ $person->id }})"
-                                                            class="text-green-600 hover:text-green-900 mr-2"
-                                                            title="Als Original markieren"
-                                                        >
+                                                <td class="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                                                    {{ $person['created_at'] ?? '-' }}
+                                                </td>
+                                                <td class="whitespace-nowrap px-6 py-4 text-sm font-medium">
+                                                    @if ($person['is_duplicate'])
+                                                        <button wire:click="unmarkAsDuplicate({{ $person['id'] }})"
+                                                            class="mr-2 text-green-600 hover:text-green-900"
+                                                            title="Als Original markieren">
                                                             ↶ Wiederherstellen
                                                         </button>
                                                     @else
-                                                        <button 
-                                                            wire:click="markAsDuplicate({{ $person->id }})"
+                                                        <button wire:click="markAsDuplicate({{ $person['id'] }})"
                                                             class="text-red-600 hover:text-red-900"
-                                                            title="Als Duplikat markieren"
-                                                        >
+                                                            title="Als Duplikat markieren">
                                                             🏷️ Markieren
                                                         </button>
                                                     @endif
@@ -176,57 +214,57 @@
                     @endforeach
                 </div>
             @else
-                <div class="bg-white rounded-lg shadow-md p-8 text-center">
-                    <div class="text-green-600 text-lg font-semibold mb-2">🎉 Keine Duplikate gefunden!</div>
+                <div class="rounded-lg bg-white p-8 text-center shadow-md">
+                    <div class="mb-2 text-lg font-semibold text-green-600">🎉 Keine Duplikate gefunden!</div>
                     <div class="text-gray-500">Alle Personen in {{ $selectedYear }} haben eindeutige Namen.</div>
                 </div>
             @endif
-
         @else
             <!-- Markierte Duplikate -->
-            @if(count($markedDuplicates) > 0)
+            @if (count($markedDuplicates) > 0)
                 <div class="space-y-6">
-                    @foreach($markedDuplicates as $name => $duplicates)
-                        <div class="bg-white rounded-lg shadow-md p-6">
-                            <h3 class="text-lg font-semibold text-red-600 mb-4">
-                                🏷️ {{ $name }} 
-                                <span class="text-sm text-gray-500">({{ count($duplicates) }} als Duplikat markiert)</span>
+                    @foreach ($markedDuplicates as $name => $duplicates)
+                        <div class="rounded-lg bg-white p-6 shadow-md">
+                            <h3 class="mb-4 text-lg font-semibold text-red-600">
+                                🏷️ {{ $name }}
+                                <span class="text-sm text-gray-500">({{ count($duplicates) }} als Duplikat
+                                    markiert)</span>
                             </h3>
 
                             <div class="space-y-3">
-                                @foreach($duplicates as $person)
-                                    <div class="flex justify-between items-center p-4 bg-red-50 rounded-lg">
+                                @foreach ($duplicates as $person)
+                                    <div class="flex items-center justify-between rounded-lg bg-red-50 p-4">
                                         <div class="flex-1">
-                                            <div class="font-medium">{{ $person->full_name }} (ID: {{ $person->id }})</div>
+                                            <div class="font-medium">{{ $person->full_name }} (ID:
+                                                {{ $person->id }})</div>
                                             <div class="text-sm text-gray-600">
-                                                @if($person->band)
+                                                @if ($person->band)
                                                     Band: {{ $person->band->band_name }}
                                                 @endif
-                                                @if($person->group)
+                                                @if ($person->group)
                                                     | Gruppe: {{ $person->group->name }}
                                                 @endif
-                                                @if($person->knack_id)
+                                                @if ($person->knack_id)
                                                     | Knack: {{ $person->knack_id }}
                                                 @endif
                                             </div>
-                                            <div class="text-xs text-gray-500 mt-1">
+                                            <div class="mt-1 text-xs text-gray-500">
                                                 Markiert: {{ $person->duplicate_marked_at->format('d.m.Y H:i') }}
-                                                @if($person->duplicateMarkedBy)
-                                                    von {{ $person->duplicateMarkedBy->first_name }} {{ $person->duplicateMarkedBy->last_name }}
+                                                @if ($person->duplicateMarkedBy)
+                                                    von {{ $person->duplicateMarkedBy->first_name }}
+                                                    {{ $person->duplicateMarkedBy->last_name }}
                                                 @endif
                                             </div>
-                                            @if($person->duplicate_reason)
-                                                <div class="text-xs text-orange-600 mt-1">
+                                            @if ($person->duplicate_reason)
+                                                <div class="mt-1 text-xs text-orange-600">
                                                     Grund: {{ $person->duplicate_reason }}
                                                 </div>
                                             @endif
                                         </div>
                                         <div class="ml-4">
-                                            <button 
-                                                wire:click="unmarkAsDuplicate({{ $person->id }})"
-                                                class="px-3 py-2 bg-green-500 text-white text-sm rounded hover:bg-green-600"
-                                                title="Duplikat-Markierung entfernen"
-                                            >
+                                            <button wire:click="unmarkAsDuplicate({{ $person->id }})"
+                                                class="rounded bg-green-500 px-3 py-2 text-sm text-white hover:bg-green-600"
+                                                title="Duplikat-Markierung entfernen">
                                                 ↶ Wiederherstellen
                                             </button>
                                         </div>
@@ -237,8 +275,8 @@
                     @endforeach
                 </div>
             @else
-                <div class="bg-white rounded-lg shadow-md p-8 text-center">
-                    <div class="text-gray-500 text-lg font-semibold mb-2">Keine markierten Duplikate</div>
+                <div class="rounded-lg bg-white p-8 text-center shadow-md">
+                    <div class="mb-2 text-lg font-semibold text-gray-500">Keine markierten Duplikate</div>
                     <div class="text-gray-400">Aktuell sind keine Personen als Duplikate markiert.</div>
                 </div>
             @endif

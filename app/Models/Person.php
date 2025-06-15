@@ -238,7 +238,6 @@ class Person extends Model
         return $query->where('is_duplicate', true);
     }
 
-    // Finde potentielle Duplikate basierend auf Name
     public static function findPotentialDuplicates($year = null)
     {
         $year = $year ?? now()->year;
@@ -259,14 +258,28 @@ class Person extends Model
             return $group->count() > 1;
         });
 
-        // In das erwartete Format umwandeln
+        // In das erwartete Format umwandeln - WICHTIG: Personen als Array konvertieren
         return $duplicateGroups->map(function ($persons, $key) {
             $firstPerson = $persons->first();
 
             return [
                 'name' => $firstPerson->first_name . ' ' . $firstPerson->last_name,
                 'count' => $persons->count(),
-                'persons' => $persons
+                'persons' => $persons->map(function ($person) {
+                    return [
+                        'id' => $person->id,
+                        'first_name' => $person->first_name,
+                        'last_name' => $person->last_name,
+                        'band_name' => $person->band ? $person->band->band_name : null,
+                        'band_id' => $person->band_id,
+                        'group_name' => $person->group ? $person->group->name : null,
+                        'group_id' => $person->group_id,
+                        'knack_id' => $person->knack_id,
+                        'is_duplicate' => $person->is_duplicate,
+                        'present' => $person->present,
+                        'created_at' => $person->created_at ? $person->created_at->format('d.m.Y H:i') : null,
+                    ];
+                })->toArray() // WICHTIG: Konvertierung zu Array
             ];
         })->values(); // values() um die Schlüssel zu entfernen
     }

@@ -427,13 +427,18 @@ class BandMemberImport extends Component
         if ($selectedBand) {
             $this->bandSearchTerms[$index] = $selectedBand->band_name;
         }
+
+        // NEU: Dropdown schließen
+        $this->dispatch('dropdown-close', ['index' => $index]);
     }
 
-    // NEU: Band-Auswahl zurücksetzen
     public function clearBandSelection($index)
     {
         $this->bandMappings[$index]['selected_band_id'] = '';
         $this->bandSearchTerms[$index] = '';
+
+        // NEU: Dropdown schließen
+        $this->dispatch('dropdown-close', ['index' => $index]);
     }
 
     // NEU: Unbekannte Bands zu bekannten Bands zuordnen
