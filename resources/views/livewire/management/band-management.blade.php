@@ -896,7 +896,6 @@
                 </div>
             @endif
         </div>
-        @include('components.vehicle-plates-modal')
     @endif
 
     <!-- Optimiertes JavaScript -->
@@ -1200,4 +1199,5 @@
             console.log('🎵 Band Management loaded. Try: bandManagement.showStats()');
         @endif
     </script>
+    @include('components.vehicle-plates-modal')
 </div>
