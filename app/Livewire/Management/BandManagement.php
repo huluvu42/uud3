@@ -11,10 +11,11 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 use Livewire\WithPagination;
+use App\Traits\ManagesVehiclePlates;
 
 class BandManagement extends Component
 {
-    use WithPagination;
+    use WithPagination, ManagesVehiclePlates;
 
     // Band Properties
     public $band_name = '';
@@ -566,6 +567,15 @@ class BandManagement extends Component
         $this->showEditMemberForm = false;
         $this->showVehicleForm = false;
         $this->showGuestForm = false;
+        $this->showVehiclePlatesModal = false;
+    }
+
+    protected function refreshSelectedPerson()
+    {
+        if ($this->selectedPersonForPlates) {
+            $this->selectedPersonForPlates = $this->selectedPersonForPlates->fresh(['vehiclePlates']);
+        }
+        $this->smartRefresh(true);
     }
 
     private function loadStageDefaults()

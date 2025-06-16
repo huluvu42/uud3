@@ -372,14 +372,22 @@
             @if ($selectedBand->members->count() > 0)
                 <div class="overflow-x-auto">
                     <table class="min-w-full table-auto">
-                        <thead>
-                            <tr class="bg-gray-50">
-                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-700">Name</th>
-                                <th class="px-4 py-3 text-center text-sm font-medium text-gray-700">Typ</th>
-                                <th class="px-4 py-3 text-center text-sm font-medium text-gray-700">Anwesend</th>
-                                <th class="px-4 py-3 text-center text-sm font-medium text-gray-700">Backstage</th>
-                                <th class="px-4 py-3 text-center text-sm font-medium text-gray-700">Gutscheine</th>
-                                <th class="px-4 py-3 text-center text-sm font-medium text-gray-700">Aktionen</th>
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
+                                    Name</th>
+                                <th class="px-4 py-3 text-center text-xs font-medium uppercase text-gray-500">
+                                    Typ</th>
+                                <th class="px-4 py-3 text-center text-xs font-medium uppercase text-gray-500">
+                                    Anwesend</th>
+                                <th class="px-4 py-3 text-center text-xs font-medium uppercase text-gray-500">
+                                    Backstage</th>
+                                <th class="px-4 py-3 text-center text-xs font-medium uppercase text-gray-500">
+                                    Gutscheine</th>
+                                <th class="px-4 py-3 text-center text-xs font-medium uppercase text-gray-500">
+                                    KFZ</th>
+                                <th class="px-4 py-3 text-center text-xs font-medium uppercase text-gray-500">
+                                    Aktionen</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-200">
@@ -464,8 +472,32 @@
                                         </div>
                                     </td>
                                     <td class="px-4 py-4 text-center">
+                                        <!-- KFZ-Kennzeichen anzeigen (VEREINFACHT) -->
+                                        <div class="text-xs">
+                                            @if ($member->vehiclePlates && $member->vehiclePlates->count() > 0)
+                                                <div class="space-y-1">
+                                                    @foreach ($member->vehiclePlates as $plate)
+                                                        <span
+                                                            class="inline-block rounded bg-blue-50 px-2 py-1 font-mono text-xs text-blue-800">
+                                                            {{ $plate->license_plate }}
+                                                        </span>
+                                                    @endforeach
+                                                </div>
+                                            @else
+                                                <span class="text-gray-400">🚗 Keine</span>
+                                            @endif
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-4 text-center">
                                         <div class="flex justify-center space-x-1">
                                             @if (!$member->isGuest())
+                                                <!-- KFZ-Kennzeichen Button (VEREINFACHT - verwendet bestehende Component) -->
+                                                <button wire:click="showVehiclePlates({{ $member->id }})"
+                                                    class="rounded bg-gray-500 px-2 py-1 text-xs text-white transition-colors duration-200 hover:bg-gray-600"
+                                                    title="KFZ-Kennzeichen verwalten">
+                                                    🚗
+                                                </button>
+
                                                 @if (!$member->guest && $selectedBand->stage && $selectedBand->stage->guest_allowed)
                                                     <button wire:click="addGuest({{ $member->id }})"
                                                         class="rounded bg-purple-500 px-2 py-1 text-xs text-white transition-colors duration-200 hover:bg-purple-600"
@@ -492,11 +524,13 @@
                                                     🗑️
                                                 </button>
                                             @else
-                                                <button wire:click="deleteGuest({{ $member->id }})"
-                                                    wire:confirm="Gast '{{ $member->first_name }} {{ $member->last_name }}' wirklich entfernen?"
-                                                    class="rounded bg-red-500 px-2 py-1 text-xs text-white transition-colors duration-200 hover:bg-red-600"
-                                                    title="Gast entfernen">
-                                                    🗑️ Gast entfernen
+                                                <span class="text-xs text-gray-500">Gast von:
+                                                    {{ $member->responsiblePerson ? $member->responsiblePerson->first_name : 'Unbekannt' }}</span>
+                                                <button wire:click="deleteMember({{ $member->id }})"
+                                                    wire:confirm="Gast '{{ $member->first_name }} {{ $member->last_name }}' wirklich löschen?"
+                                                    class="ml-2 rounded bg-red-500 px-2 py-1 text-xs text-white transition-colors duration-200 hover:bg-red-600"
+                                                    title="Gast löschen">
+                                                    🗑️
                                                 </button>
                                             @endif
                                         </div>
@@ -862,6 +896,7 @@
                 </div>
             @endif
         </div>
+        @include('components.vehicle-plates-modal')
     @endif
 
     <!-- Optimiertes JavaScript -->
