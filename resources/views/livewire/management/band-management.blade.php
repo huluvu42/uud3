@@ -165,10 +165,10 @@
                         <!-- Automatische Voucher-Anzeige -->
                         @php
                             $totalVouchers =
-                                $this->voucher_day_1 +
-                                $this->voucher_day_2 +
-                                $this->voucher_day_3 +
-                                $this->voucher_day_4;
+                                (float) ($this->voucher_day_1 ?: 0) +
+                                (float) ($this->voucher_day_2 ?: 0) +
+                                (float) ($this->voucher_day_3 ?: 0) +
+                                (float) ($this->voucher_day_4 ?: 0);
                         @endphp
                         @if ($totalVouchers > 0)
                             <div class="mt-4">
@@ -202,11 +202,11 @@
                         <div class="mt-6 flex justify-end space-x-2">
                             <button wire:click="cancelMemberForm"
                                 class="rounded bg-gray-500 px-4 py-2 font-bold text-white transition-colors duration-200 hover:bg-gray-700">
-                                ❌ Abbrechen
+                                Abbrechen
                             </button>
                             <button wire:click="{{ $showMemberForm ? 'saveMember' : 'updateMember' }}"
                                 class="rounded bg-green-500 px-4 py-2 font-bold text-white transition-colors duration-200 hover:bg-green-700">
-                                {{ $showMemberForm ? '➕ Hinzufügen' : '💾 Aktualisieren' }}
+                                {{ $showMemberForm ? 'Hinzufügen' : 'Aktualisieren' }}
                             </button>
                         </div>
                     </div>
@@ -275,11 +275,11 @@
                         <div class="mt-6 flex justify-end space-x-2">
                             <button wire:click="cancelGuestForm"
                                 class="rounded bg-gray-500 px-4 py-2 font-bold text-white transition-colors duration-200 hover:bg-gray-700">
-                                ❌ Abbrechen
+                                Abbrechen
                             </button>
                             <button wire:click="saveGuest"
                                 class="rounded bg-green-500 px-4 py-2 font-bold text-white transition-colors duration-200 hover:bg-green-700">
-                                👥 Gast hinzufügen
+                                Gast hinzufügen
                             </button>
                         </div>
                     </div>
@@ -308,11 +308,11 @@
                         <div class="mt-6 flex justify-end space-x-2">
                             <button wire:click="cancelVehicleForm"
                                 class="rounded bg-gray-500 px-4 py-2 font-bold text-white transition-colors duration-200 hover:bg-gray-700">
-                                ❌ Abbrechen
+                                Abbrechen
                             </button>
                             <button wire:click="saveVehicle"
                                 class="rounded bg-green-500 px-4 py-2 font-bold text-white transition-colors duration-200 hover:bg-green-700">
-                                🚗 Hinzufügen
+                                Hinzufügen
                             </button>
                         </div>
                     </div>
@@ -453,7 +453,8 @@
                                                     </div>
                                                     @php
                                                         $memberHasVouchers = true;
-                                                        $totalMemberVouchers += $member->{'voucher_day_' . $day};
+                                                        $totalMemberVouchers +=
+                                                            (float) $member->{'voucher_day_' . $day};
                                                     @endphp
                                                 @endif
                                             @endforeach
