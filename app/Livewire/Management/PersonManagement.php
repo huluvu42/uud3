@@ -1,5 +1,5 @@
 <?php
-// app/Livewire/Management/PersonManagement.php - VEREINFACHTE VERSION
+// app/Livewire/Management/PersonManagement.php - NUR MINIMALE ÄNDERUNGEN
 
 namespace App\Livewire\Management;
 
@@ -45,6 +45,7 @@ class PersonManagement extends Component
     public $selectedPersonForGuests = null;
     public $search = '';
     public $filterType = 'all';
+    public $selectedGroupFilter = ''; // NEU: Gruppenfilter
     public $continueAdding = false;
     public $showBandMembers = false;
     public $settings = null;
@@ -97,12 +98,18 @@ class PersonManagement extends Component
         $this->resetPage();
     }
 
+    // NEU: Reaktion auf Gruppenfilter-Änderung
+    public function updatedSelectedGroupFilter()
+    {
+        $this->resetPage();
+    }
+
     public function updatedShowBandMembers()
     {
         $this->resetPage();
     }
 
-    // Query-Methode
+    // Query-Methode - NUR GRUPPENFILTER HINZUGEFÜGT
     private function getPersonsQuery()
     {
         $query = Person::query();
@@ -186,6 +193,11 @@ class PersonManagement extends Component
             }
         }
 
+        // NEU: Spezifischer Gruppenfilter
+        if ($this->selectedGroupFilter) {
+            $query->where('group_id', $this->selectedGroupFilter);
+        }
+
         // Band members filter
         if (!$this->showBandMembers) {
             $query->whereNull('band_id');
@@ -261,7 +273,10 @@ class PersonManagement extends Component
                 'backstage_day_2',
                 'backstage_day_3',
                 'backstage_day_4'
-            ])->orderBy('name')->get();
+            ])
+                ->where('year', $this->year)
+                ->orderBy('name')
+                ->get();
         }
         return $this->groupsCache;
     }
@@ -270,6 +285,7 @@ class PersonManagement extends Component
     {
         if ($this->bandsCache === null) {
             $this->bandsCache = Band::select(['id', 'band_name'])
+                ->where('year', $this->year)
                 ->orderBy('band_name')
                 ->get();
         }
@@ -280,9 +296,10 @@ class PersonManagement extends Component
     {
         if ($this->responsiblePersonsCache === null) {
             $this->responsiblePersonsCache = Person::select(['id', 'first_name', 'last_name'])
-                ->where('can_have_guests', true)
+                ->where('can_have_guests', true) // NUR Personen die Gäste haben können
                 ->where('year', $this->year)
                 ->where('is_duplicate', false)
+                ->whereNull('responsible_person_id') // Keine Gäste als verantwortliche Personen
                 ->orderBy('last_name')
                 ->orderBy('first_name')
                 ->get();
@@ -290,31 +307,24 @@ class PersonManagement extends Component
         return $this->responsiblePersonsCache;
     }
 
-    // Person CRUD Methods
+    // KORRIGIERTE savePerson Methode mit korrektem JavaScript
     public function savePerson($continueAdding = false)
     {
-        $this->continueAdding = $continueAdding;
-
         $this->validate([
-            'first_name' => 'required|string|max:255',
-            'last_name' => 'required|string|max:255',
-            'group_id' => 'nullable|exists:groups,id',
-            'subgroup_id' => 'nullable|exists:subgroups,id',
-            'band_id' => 'nullable|exists:bands,id',
-            'responsible_person_id' => 'nullable|exists:persons,id',
-            'voucher_day_1' => 'nullable|numeric|min:0|max:999.9',
-            'voucher_day_2' => 'nullable|numeric|min:0|max:999.9',
-            'voucher_day_3' => 'nullable|numeric|min:0|max:999.9',
-            'voucher_day_4' => 'nullable|numeric|min:0|max:999.9',
-            'remarks' => 'nullable|string',
+            'first_name' => 'required|min:2',
+            'last_name' => 'required|min:2',
+            'voucher_day_1' => 'nullable|numeric|min:0',
+            'voucher_day_2' => 'nullable|numeric|min:0',
+            'voucher_day_3' => 'nullable|numeric|min:0',
+            'voucher_day_4' => 'nullable|numeric|min:0',
+        ], [
+            'first_name.required' => 'Der Vorname ist erforderlich.',
+            'first_name.min' => 'Der Vorname muss mindestens 2 Zeichen lang sein.',
+            'last_name.required' => 'Der Nachname ist erforderlich.',
+            'last_name.min' => 'Der Nachname muss mindestens 2 Zeichen lang sein.',
         ]);
 
-        if ($this->group_id && $this->band_id) {
-            $this->addError('band_id', 'Eine Person kann nicht gleichzeitig einer Gruppe und einer Band angehören.');
-            return;
-        }
-
-        $person = Person::create([
+        Person::create([
             'first_name' => $this->first_name,
             'last_name' => $this->last_name,
             'present' => $this->present,
@@ -333,17 +343,35 @@ class PersonManagement extends Component
             'band_id' => $this->band_id ?: null,
             'responsible_person_id' => $this->responsible_person_id ?: null,
             'year' => $this->year,
+            'is_duplicate' => false,
         ]);
 
         $this->resetCache();
 
-        if ($this->continueAdding) {
+        if ($continueAdding) {
+            // SPEICHERN & WEITER: Nur Namen löschen, andere Werte beibehalten
             $this->first_name = '';
             $this->last_name = '';
-            $this->present = false;
-            $this->js('clearNameFields()');
-            session()->flash('success', 'Person wurde erfolgreich erstellt! Sie können die nächste Person mit den gleichen Einstellungen anlegen.');
+
+            // Frontend-Update erzwingen mit korrektem JavaScript-Selector
+            $this->js('
+                setTimeout(() => {
+                    const firstNameInput = document.querySelector("input[wire\\\\:model=\'first_name\']");
+                    const lastNameInput = document.querySelector("input[wire\\\\:model=\'last_name\']");
+                    if (firstNameInput) {
+                        firstNameInput.value = "";
+                        firstNameInput.focus();
+                    }
+                    if (lastNameInput) {
+                        lastNameInput.value = "";
+                    }
+                }, 100);
+            ');
+
+            // Modal bleibt offen, alle anderen Werte bleiben erhalten
+            session()->flash('success', 'Person wurde erfolgreich erstellt! Nächste Person hinzufügen...');
         } else {
+            // NORMALES SPEICHERN: Modal schließen und alles zurücksetzen
             $this->showCreateForm = false;
             $this->resetPersonForm();
             session()->flash('success', 'Person wurde erfolgreich erstellt!');
@@ -353,23 +381,13 @@ class PersonManagement extends Component
     public function updatePerson()
     {
         $this->validate([
-            'first_name' => 'required|string|max:255',
-            'last_name' => 'required|string|max:255',
-            'group_id' => 'nullable|exists:groups,id',
-            'subgroup_id' => 'nullable|exists:subgroups,id',
-            'band_id' => 'nullable|exists:bands,id',
-            'responsible_person_id' => 'nullable|exists:persons,id',
-            'voucher_day_1' => 'nullable|numeric|min:0|max:999.9',
-            'voucher_day_2' => 'nullable|numeric|min:0|max:999.9',
-            'voucher_day_3' => 'nullable|numeric|min:0|max:999.9',
-            'voucher_day_4' => 'nullable|numeric|min:0|max:999.9',
-            'remarks' => 'nullable|string',
+            'first_name' => 'required|min:2',
+            'last_name' => 'required|min:2',
+            'voucher_day_1' => 'nullable|numeric|min:0',
+            'voucher_day_2' => 'nullable|numeric|min:0',
+            'voucher_day_3' => 'nullable|numeric|min:0',
+            'voucher_day_4' => 'nullable|numeric|min:0',
         ]);
-
-        if ($this->group_id && $this->band_id) {
-            $this->addError('band_id', 'Eine Person kann nicht gleichzeitig einer Gruppe und einer Band angehören.');
-            return;
-        }
 
         $this->editingPerson->update([
             'first_name' => $this->first_name,
@@ -494,8 +512,8 @@ class PersonManagement extends Component
             $person->backstage_day_3 || $person->backstage_day_4;
     }
 
-    // Gruppen-basierte Voreinstellungen
-    public function updatedGroupId()
+    // GEFIXT: Gruppen-basierte Voreinstellungen - OHNE wire:change
+    public function updateGroupValues()
     {
         if ($this->group_id) {
             $group = collect($this->getGroupsCache())->firstWhere('id', $this->group_id);
@@ -516,7 +534,7 @@ class PersonManagement extends Component
         }
     }
 
-    public function updatedBandId()
+    public function updateBandValues()
     {
         if ($this->band_id) {
             $this->group_id = '';

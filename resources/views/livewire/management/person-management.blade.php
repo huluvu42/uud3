@@ -457,16 +457,16 @@
                 <div>
                     <h3 class="mb-4 text-lg font-semibold">Filter & Optionen</h3>
                     <div class="space-y-2">
-                        <select wire:model.live="filterType"
-                            class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <option value="all">Alle Personen</option>
-                            <option value="groups">Nur Gruppen-Mitglieder</option>
-                            @if ($showBandMembers)
-                                <option value="bands">Nur Band-Mitglieder</option>
-                            @endif
-                            <option value="guests">Nur Gäste</option>
-                        </select>
 
+
+                        <!-- NEU: Gruppenfilter DIREKT DARUNTER hinzufügen -->
+                        <select wire:model.live="selectedGroupFilter"
+                            class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="">🏷️ Alle Gruppen</option>
+                            @foreach ($groups as $group)
+                                <option value="{{ $group->id }}">{{ $group->name }}</option>
+                            @endforeach
+                        </select>
                         <label class="flex items-center space-x-2">
                             <input type="checkbox" wire:model.live="showBandMembers"
                                 class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
