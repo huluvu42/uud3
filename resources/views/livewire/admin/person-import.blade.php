@@ -377,16 +377,61 @@
                     <!-- Duplicate Handling Option -->
                     @if (count($duplicates) > 0)
                         <div class="mb-6 rounded border border-yellow-200 bg-yellow-50 p-4">
-                            <label class="flex items-center">
-                                <input type="checkbox" wire:model="overwriteExisting" class="mr-2">
-                                <span class="text-yellow-800">
-                                    <strong>Duplikate überschreiben:</strong>
-                                    Bestehende Personen mit neuen Daten aktualisieren (Gruppe, Bemerkungen)
-                                </span>
-                            </label>
-                            <p class="mt-1 text-xs text-yellow-600">
-                                Wenn nicht aktiviert, werden Duplikate übersprungen und nicht importiert.
+                            <h4 class="mb-3 font-semibold text-yellow-800">🔄 Gefundene Duplikate</h4>
+                            <p class="mb-4 text-sm text-yellow-700">
+                                Folgende Personen sind bereits in der Datenbank vorhanden (gleicher Vor- und Nachname).
+                                Sie können für jede Person individuell entscheiden:
                             </p>
+
+                            <div class="space-y-3">
+                                @foreach ($duplicates as $index => $duplicate)
+                                    <div class="rounded border border-yellow-300 bg-white p-3">
+                                        <div class="flex items-start justify-between">
+                                            <div class="flex-1">
+                                                <div class="font-medium text-gray-900">
+                                                    Zeile {{ $duplicate['row_number'] }}:
+                                                    <span class="text-blue-600">{{ $duplicate['first_name'] }}
+                                                        {{ $duplicate['last_name'] }}</span>
+                                                </div>
+                                                <div class="mt-1 text-sm text-gray-600">
+                                                    <strong>Neue Daten:</strong>
+                                                    Gruppe: {{ $duplicate['group']->name }}
+                                                    @if ($duplicate['remarks'])
+                                                        | Bemerkungen: {{ $duplicate['remarks'] }}
+                                                    @endif
+                                                    @if ($duplicate['license_plate'])
+                                                        | Kennzeichen: {{ $duplicate['license_plate'] }}
+                                                    @endif
+                                                </div>
+                                                <div class="mt-1 text-sm text-yellow-600">
+                                                    <strong>Bestehende Person (ID:
+                                                        {{ $duplicate['existing_person']->id }}):</strong>
+                                                    @if ($duplicate['existing_person']->group)
+                                                        Gruppe: {{ $duplicate['existing_person']->group->name }}
+                                                    @endif
+                                                    @if ($duplicate['existing_person']->remarks)
+                                                        | Bemerkungen: {{ $duplicate['existing_person']->remarks }}
+                                                    @endif
+                                                </div>
+                                            </div>
+                                            <div class="ml-4 min-w-0 flex-shrink-0" style="width: 200px;">
+                                                <select wire:model="duplicateActions.{{ $index }}"
+                                                    class="block w-full rounded border-gray-300 text-sm">
+                                                    <option value="ignore">🚫 Ignorieren</option>
+                                                    <option value="import_new">➕ Als neue Person anlegen</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+
+                            <div class="mt-4 text-xs text-yellow-600">
+                                <strong>Optionen:</strong><br>
+                                • <strong>Ignorieren:</strong> Person wird nicht importiert (Standard)<br>
+                                • <strong>Als neue Person anlegen:</strong> Person wird trotz gleichem Namen als neue
+                                Person mit der gewählten Gruppe angelegt
+                            </div>
                         </div>
                     @endif
                 </div>
@@ -492,58 +537,7 @@
                     </div>
                 @endif
 
-                <!-- Duplicates -->
-                @if (count($duplicates) > 0)
-                    <div class="rounded-lg bg-white p-6 shadow-md">
-                        <h4 class="mb-4 text-lg font-semibold text-yellow-600">⚠️ Duplikate gefunden
-                            ({{ count($duplicates) }})</h4>
-                        <div class="space-y-4">
-                            @foreach ($duplicates as $duplicate)
-                                <div class="rounded border border-yellow-200 bg-yellow-50 p-4">
-                                    <div class="flex items-start justify-between">
-                                        <div class="flex-1">
-                                            <div class="font-medium text-yellow-800">
-                                                Zeile {{ $duplicate['row_number'] }}: {{ $duplicate['first_name'] }}
-                                                {{ $duplicate['last_name'] }}
-                                            </div>
-                                            <div class="mt-1 text-sm text-yellow-700">
-                                                <strong>Neue Daten:</strong>
-                                                Gruppe: {{ $duplicate['group']->name }}
-                                                @if ($duplicate['remarks'])
-                                                    | Bemerkungen: {{ $duplicate['remarks'] }}
-                                                @endif
-                                            </div>
-                                            <div class="mt-1 text-sm text-yellow-600">
-                                                <strong>Bestehende Person (ID:
-                                                    {{ $duplicate['existing_person']->id }}):</strong>
-                                                @if ($duplicate['existing_person']->group)
-                                                    Gruppe: {{ $duplicate['existing_person']->group->name }}
-                                                @endif
-                                                @if ($duplicate['existing_person']->band)
-                                                    | Band: {{ $duplicate['existing_person']->band->band_name }}
-                                                @endif
-                                                @if ($duplicate['existing_person']->remarks)
-                                                    | Bemerkungen: {{ $duplicate['existing_person']->remarks }}
-                                                @endif
-                                            </div>
-                                        </div>
-                                        <div class="ml-4">
-                                            @if ($overwriteExisting)
-                                                <span class="rounded bg-blue-100 px-2 py-1 text-xs text-blue-800">
-                                                    Wird überschrieben
-                                                </span>
-                                            @else
-                                                <span class="rounded bg-gray-100 px-2 py-1 text-xs text-gray-800">
-                                                    Wird übersprungen
-                                                </span>
-                                            @endif
-                                        </div>
-                                    </div>
-                                </div>
-                            @endforeach
-                        </div>
-                    </div>
-                @endif
+
 
                 <!-- Action Buttons -->
                 <div class="rounded-lg bg-white p-6 shadow-md">

@@ -11,9 +11,7 @@ use App\Models\VehiclePlate;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use PhpOffice\PhpSpreadsheet\IOFactory;
-use League\Csv\Reader;
-use League\Csv\Statement;
+use Maatwebsite\Excel\Facades\Excel;
 
 class PersonImport extends Component
 {
@@ -21,7 +19,6 @@ class PersonImport extends Component
 
     // Upload & File properties
     public $file;
-    public $uploadedFile = null;
     public $fileHeaders = [];
     public $previewData = [];
 
@@ -30,12 +27,12 @@ class PersonImport extends Component
     public $lastNameColumn = null;
     public $fullNameColumn = null;
     public $remarksColumn = null;
-    public $licensePlateColumn = null; // NEU: Nummernschild-Spalte
+    public $licensePlateColumn = null;
     public $nameFormat = 'separate'; // 'separate', 'firstname_lastname', 'lastname_firstname'
 
     // Import settings
     public $selectedGroupId = null;
-    public $selectedResponsiblePersonId = null; // NEU: Verantwortliche Person
+    public $selectedResponsiblePersonId = null;
     public $selectedYear;
     public $overwriteExisting = false;
 
@@ -47,11 +44,13 @@ class PersonImport extends Component
     // Data for preview
     public $duplicates = [];
     public $newPersons = [];
-    public $importErrors = []; // Renamed from $errors to avoid conflict
+    public $importErrors = [];
 
     // Available groups
     public $groups = [];
-    public $responsiblePersons = []; // NEU: Verfügbare Verantwortliche
+    public $responsiblePersons = [];
+
+    public $duplicateActions = [];
 
     public function mount()
     {
@@ -69,8 +68,6 @@ class PersonImport extends Component
 
     public function loadResponsiblePersons()
     {
-        // Alle Personen des aktuellen Jahres die als Verantwortliche fungieren können
-        // Das sind Personen die "can_have_guests" = true haben
         $this->responsiblePersons = Person::where('year', $this->selectedYear)
             ->where('is_duplicate', false)
             ->where('can_have_guests', true)
@@ -88,7 +85,164 @@ class PersonImport extends Component
 
     public function updatedFile()
     {
-        $this->validateFile();
+        if (!$this->file) return;
+
+        $this->isLoading = true;
+
+        try {
+            $this->processFile();
+            $this->step = 2;
+        } catch (\Exception $e) {
+            session()->flash('error', 'Fehler beim Verarbeiten der Datei: ' . $e->getMessage());
+            Log::error('File processing error: ' . $e->getMessage());
+        } finally {
+            $this->isLoading = false;
+        }
+    }
+
+    private function processFile()
+    {
+        $extension = $this->file->getClientOriginalExtension();
+
+        if (in_array($extension, ['xlsx', 'xls'])) {
+            $data = Excel::toArray([], $this->file);
+            $rows = $data[0]; // Erste Tabelle
+        } else {
+            // Verbesserte CSV-Verarbeitung wie in BandImport
+            $content = file_get_contents($this->file->getRealPath());
+
+            // BOM entfernen falls vorhanden
+            $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
+
+            // Verschiedene Encodings testen
+            $encoding = mb_detect_encoding($content, ['UTF-8', 'UTF-16', 'ISO-8859-1', 'Windows-1252']);
+            if ($encoding && $encoding !== 'UTF-8') {
+                $content = mb_convert_encoding($content, 'UTF-8', $encoding);
+            }
+
+            $delimiter = $this->detectDelimiter($content);
+            $rows = [];
+
+            // Temporäre Datei ohne BOM erstellen
+            $tempFile = tempnam(sys_get_temp_dir(), 'csv_clean');
+            file_put_contents($tempFile, $content);
+
+            if (($handle = fopen($tempFile, "r")) !== FALSE) {
+                while (($data = fgetcsv($handle, 1000, $delimiter)) !== FALSE) {
+                    $rows[] = $data;
+                }
+                fclose($handle);
+            }
+
+            // Temporäre Datei löschen
+            unlink($tempFile);
+        }
+
+        if (empty($rows)) {
+            throw new \Exception('Die Datei scheint leer zu sein.');
+        }
+
+        // Headers aus der ersten Zeile extrahieren und gründlich bereinigen
+        $rawHeaders = $rows[0];
+        $this->fileHeaders = [];
+
+        foreach ($rawHeaders as $index => $header) {
+            // Header bereinigen
+            $cleanHeader = preg_replace('/^\xEF\xBB\xBF/', '', $header);
+            $cleanHeader = trim($cleanHeader, " \t\n\r\0\x0B\"'");
+            $cleanHeader = preg_replace('/[\x{201C}\x{201D}\x{2018}\x{2019}]/u', '', $cleanHeader);
+            $cleanHeader = preg_replace('/[\x00-\x1F\x7F]/', '', $cleanHeader);
+
+            // Wenn Header leer ist, generiere Spalten-Namen
+            if (empty($cleanHeader)) {
+                $columnLetter = $this->getColumnName($index);
+                $this->fileHeaders[] = "Spalte $columnLetter";
+            } else {
+                $this->fileHeaders[] = $cleanHeader;
+            }
+        }
+
+        // Preview-Daten (erste 5 Zeilen nach Header)
+        $this->previewData = [];
+        for ($i = 1; $i <= min(6, count($rows) - 1); $i++) {
+            if (!empty($rows[$i])) {
+                $row = [];
+                foreach ($this->fileHeaders as $index => $header) {
+                    $row[$header] = isset($rows[$i][$index]) ? trim($rows[$i][$index]) : '';
+                }
+                $this->previewData[] = $row;
+            }
+        }
+
+        // Auto-mapping versuchen
+        $this->attemptAutoMapping();
+    }
+
+    private function getColumnName($index)
+    {
+        $letters = '';
+        while ($index >= 0) {
+            $letters = chr(65 + ($index % 26)) . $letters;
+            $index = intval($index / 26) - 1;
+        }
+        return $letters;
+    }
+
+    private function detectDelimiter($csvContent)
+    {
+        $delimiters = [',', ';', '\t', '|'];
+        $delimiterCount = [];
+
+        foreach ($delimiters as $delimiter) {
+            $delimiterCount[$delimiter] = substr_count($csvContent, $delimiter);
+        }
+
+        return array_search(max($delimiterCount), $delimiterCount);
+    }
+
+    private function attemptAutoMapping()
+    {
+        foreach ($this->fileHeaders as $index => $header) {
+            $lowerHeader = strtolower(trim($header));
+
+            // First Name
+            if (in_array($lowerHeader, ['vorname', 'firstname', 'first_name', 'first name'])) {
+                $this->firstNameColumn = $header;
+            }
+
+            // Last Name
+            if (in_array($lowerHeader, ['nachname', 'lastname', 'last_name', 'last name', 'familienname'])) {
+                $this->lastNameColumn = $header;
+            }
+
+            // Full Name - für CSV wäre das wahrscheinlich die erste Spalte mit Namen
+            if (
+                in_array($lowerHeader, ['name', 'vollname', 'full_name', 'full name', 'person', 'spalte a']) ||
+                ($index === 0 && !$this->fullNameColumn)
+            ) {
+                $this->fullNameColumn = $header;
+                if (!$this->firstNameColumn && !$this->lastNameColumn) {
+                    $this->nameFormat = 'firstname_lastname'; // Default
+                }
+            }
+
+            // License Plate
+            if (in_array($lowerHeader, ['kennzeichen', 'kfz', 'license_plate', 'nummernschild', 'auto', 'spalte b', 'spalte c'])) {
+                $this->licensePlateColumn = $header;
+            }
+
+            // Remarks
+            if (in_array($lowerHeader, ['bemerkung', 'bemerkungen', 'remarks', 'comment', 'kommentar', 'notiz'])) {
+                $this->remarksColumn = $header;
+            }
+        }
+
+        // Auto-detect name format
+        if ($this->firstNameColumn && $this->lastNameColumn) {
+            $this->nameFormat = 'separate';
+        } elseif ($this->fullNameColumn) {
+            $this->nameFormat = 'firstname_lastname'; // Default
+        }
     }
 
     public function updatedNameFormat()
@@ -97,96 +251,6 @@ class PersonImport extends Component
         $this->firstNameColumn = null;
         $this->lastNameColumn = null;
         $this->fullNameColumn = null;
-    }
-
-    public function validateFile()
-    {
-        $this->validate([
-            'file' => 'required|file|mimes:csv,xlsx,xls|max:10240', // 10MB max
-        ]);
-
-        try {
-            // Store file in temporary directory
-            $this->uploadedFile = $this->file->store('temp-imports');
-
-            // Verify file exists
-            if (!Storage::exists($this->uploadedFile)) {
-                throw new \Exception('Datei wurde nicht korrekt gespeichert.');
-            }
-
-            $this->parseFileHeaders();
-            $this->step = 2;
-        } catch (\Exception $e) {
-            $this->addError('file', 'Fehler beim Lesen der Datei: ' . $e->getMessage());
-        }
-    }
-
-    private function parseFileHeaders()
-    {
-        $filePath = Storage::path($this->uploadedFile);
-
-        // Verify file exists
-        if (!file_exists($filePath)) {
-            throw new \Exception('Gespeicherte Datei wurde nicht gefunden: ' . $filePath);
-        }
-
-        $extension = strtolower($this->file->getClientOriginalExtension());
-
-        try {
-            if ($extension === 'csv') {
-                $this->parseCSVHeaders($filePath);
-            } else {
-                $this->parseExcelHeaders($filePath);
-            }
-        } catch (\Exception $e) {
-            throw new \Exception('Datei konnte nicht gelesen werden: ' . $e->getMessage());
-        }
-    }
-
-    private function parseCSVHeaders($filePath)
-    {
-        $csv = Reader::createFromPath($filePath, 'r');
-        $csv->setHeaderOffset(0);
-
-        $this->fileHeaders = $csv->getHeader();
-
-        // Preview data (first 5 rows)
-        $stmt = Statement::create()->limit(5);
-        $this->previewData = iterator_to_array($stmt->process($csv));
-    }
-
-    private function parseExcelHeaders($filePath)
-    {
-        $spreadsheet = IOFactory::load($filePath);
-        $worksheet = $spreadsheet->getActiveSheet();
-
-        // Get headers from first row
-        $this->fileHeaders = [];
-        $highestColumn = $worksheet->getHighestColumn();
-
-        for ($col = 'A'; $col <= $highestColumn; $col++) {
-            $headerValue = $worksheet->getCell($col . '1')->getCalculatedValue();
-            if ($headerValue !== null && $headerValue !== '') {
-                $this->fileHeaders[] = trim((string)$headerValue);
-            } else {
-                // If empty header, use column letter
-                $this->fileHeaders[] = "Spalte " . $col;
-            }
-        }
-
-        // Preview data (rows 2-6)
-        $this->previewData = [];
-        $highestRow = min(6, $worksheet->getHighestRow());
-
-        for ($row = 2; $row <= $highestRow; $row++) {
-            $rowData = [];
-            for ($colIndex = 0; $colIndex < count($this->fileHeaders); $colIndex++) {
-                $col = chr(65 + $colIndex); // A, B, C, etc.
-                $cellValue = $worksheet->getCell($col . $row)->getCalculatedValue();
-                $rowData[$this->fileHeaders[$colIndex]] = $cellValue;
-            }
-            $this->previewData[] = $rowData;
-        }
     }
 
     public function proceedToPreview()
@@ -214,71 +278,75 @@ class PersonImport extends Component
             $this->processImportData();
             $this->step = 3;
         } catch (\Exception $e) {
-            $this->addError('general', 'Fehler beim Verarbeiten der Daten: ' . $e->getMessage());
+            session()->flash('error', 'Fehler beim Verarbeiten der Daten: ' . $e->getMessage());
+            Log::error('ProcessImportData error: ' . $e->getMessage());
+        } finally {
+            $this->isLoading = false;
         }
-
-        $this->isLoading = false;
     }
 
     private function processImportData()
     {
-        $filePath = Storage::path($this->uploadedFile);
+        // Direkt die bereits verarbeiteten Daten aus dem ersten Schritt verwenden
+        $extension = $this->file->getClientOriginalExtension();
 
-        // Verify file still exists
-        if (!file_exists($filePath)) {
-            throw new \Exception('Datei wurde nicht gefunden: ' . $filePath);
-        }
+        if (in_array($extension, ['xlsx', 'xls'])) {
+            $data = Excel::toArray([], $this->file);
+            $rows = $data[0];
 
-        $extension = strtolower($this->file->getClientOriginalExtension());
+            // Headers entfernen
+            array_shift($rows);
 
-        $allData = [];
+            $allData = [];
+            foreach ($rows as $row) {
+                if (empty(array_filter($row))) continue; // Leere Zeilen überspringen
 
-        if ($extension === 'csv') {
-            $allData = $this->readCSVData($filePath);
+                $rowData = [];
+                foreach ($this->fileHeaders as $index => $header) {
+                    $rowData[$header] = isset($row[$index]) ? trim($row[$index]) : '';
+                }
+                $allData[] = $rowData;
+            }
         } else {
-            $allData = $this->readExcelData($filePath);
+            // CSV - Daten erneut verarbeiten mit der gleichen Logik
+            $content = file_get_contents($this->file->getRealPath());
+            $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
+
+            $encoding = mb_detect_encoding($content, ['UTF-8', 'UTF-16', 'ISO-8859-1', 'Windows-1252']);
+            if ($encoding && $encoding !== 'UTF-8') {
+                $content = mb_convert_encoding($content, 'UTF-8', $encoding);
+            }
+
+            $delimiter = $this->detectDelimiter($content);
+            $rows = [];
+
+            $tempFile = tempnam(sys_get_temp_dir(), 'csv_clean');
+            file_put_contents($tempFile, $content);
+
+            if (($handle = fopen($tempFile, "r")) !== FALSE) {
+                while (($data = fgetcsv($handle, 1000, $delimiter)) !== FALSE) {
+                    $rows[] = $data;
+                }
+                fclose($handle);
+            }
+            unlink($tempFile);
+
+            // Headers entfernen
+            array_shift($rows);
+
+            $allData = [];
+            foreach ($rows as $row) {
+                if (empty(array_filter($row))) continue; // Leere Zeilen überspringen
+
+                $rowData = [];
+                foreach ($this->fileHeaders as $index => $header) {
+                    $rowData[$header] = isset($row[$index]) ? trim($row[$index]) : '';
+                }
+                $allData[] = $rowData;
+            }
         }
 
         $this->analyzeImportData($allData);
-    }
-
-    private function readCSVData($filePath)
-    {
-        $csv = Reader::createFromPath($filePath, 'r');
-        $csv->setHeaderOffset(0);
-
-        return iterator_to_array($csv);
-    }
-
-    private function readExcelData($filePath)
-    {
-        $spreadsheet = IOFactory::load($filePath);
-        $worksheet = $spreadsheet->getActiveSheet();
-
-        $data = [];
-        $highestRow = $worksheet->getHighestRow();
-
-        for ($row = 2; $row <= $highestRow; $row++) {
-            $rowData = [];
-            $hasData = false;
-
-            for ($colIndex = 0; $colIndex < count($this->fileHeaders); $colIndex++) {
-                $col = chr(65 + $colIndex);
-                $cellValue = $worksheet->getCell($col . $row)->getCalculatedValue();
-                $rowData[$this->fileHeaders[$colIndex]] = $cellValue;
-
-                if (!empty(trim((string)$cellValue))) {
-                    $hasData = true;
-                }
-            }
-
-            // Only add rows that have some data
-            if ($hasData) {
-                $data[] = $rowData;
-            }
-        }
-
-        return $data;
     }
 
     private function analyzeImportData($data)
@@ -286,14 +354,15 @@ class PersonImport extends Component
         $this->duplicates = [];
         $this->newPersons = [];
         $this->importErrors = [];
+        $this->duplicateActions = []; // Reset
 
         $group = Group::find($this->selectedGroupId);
 
         foreach ($data as $index => $row) {
-            $rowNumber = $index + 2; // +2 because we start from row 2 in Excel/CSV
+            $rowNumber = $index + 2;
 
             try {
-                // Extract names
+                // Name extraction logic (bleibt gleich)
                 if ($this->nameFormat === 'separate') {
                     $firstName = trim((string)($row[$this->firstNameColumn] ?? ''));
                     $lastName = trim((string)($row[$this->lastNameColumn] ?? ''));
@@ -307,7 +376,7 @@ class PersonImport extends Component
                     if ($this->nameFormat === 'firstname_lastname') {
                         $firstName = $nameParts[0] ?? '';
                         $lastName = $nameParts[1] ?? '';
-                    } else { // lastname_firstname
+                    } else {
                         $lastName = $nameParts[0] ?? '';
                         $firstName = $nameParts[1] ?? '';
                     }
@@ -332,18 +401,23 @@ class PersonImport extends Component
                     'first_name' => $firstName,
                     'last_name' => $lastName,
                     'remarks' => $remarks,
+                    'license_plate' => $licensePlate,
                     'group' => $group,
                     'raw_data' => $row
                 ];
 
                 if ($existingPerson) {
+                    $duplicateIndex = count($this->duplicates);
                     $personData['existing_person'] = $existingPerson;
                     $this->duplicates[] = $personData;
+
+                    // Standard-Aktion: Ignorieren
+                    $this->duplicateActions[$duplicateIndex] = 'ignore';
                 } else {
                     $this->newPersons[] = $personData;
                 }
             } catch (\Exception $e) {
-                $this->errors[] = [
+                $this->importErrors[] = [
                     'row_number' => $rowNumber,
                     'message' => $e->getMessage(),
                     'raw_data' => $row
@@ -367,18 +441,22 @@ class PersonImport extends Component
         try {
             $group = Group::find($this->selectedGroupId);
 
-            // Import new persons
+            // Import new persons (bleibt gleich)
             foreach ($this->newPersons as $personData) {
                 $this->createPerson($personData, $group);
                 $this->importResults['imported']++;
             }
 
-            // Handle duplicates
-            foreach ($this->duplicates as $personData) {
-                if ($this->overwriteExisting) {
-                    $this->updatePerson($personData, $group);
-                    $this->importResults['updated']++;
+            // Handle duplicates mit individuellen Aktionen
+            foreach ($this->duplicates as $index => $personData) {
+                $action = $this->duplicateActions[$index] ?? 'ignore';
+
+                if ($action === 'import_new') {
+                    // Als neue Person importieren (trotz gleichem Namen)
+                    $this->createPerson($personData, $group);
+                    $this->importResults['imported']++;
                 } else {
+                    // Ignorieren (Standard)
                     $this->importResults['skipped']++;
                 }
             }
@@ -393,11 +471,8 @@ class PersonImport extends Component
         } catch (\Exception $e) {
             DB::rollback();
             $this->importResults['errors']++;
-            $this->addError('import', 'Import-Fehler: ' . $e->getMessage());
-            Log::error('Person Import Error', [
-                'error' => $e->getMessage(),
-                'user_id' => auth()->id()
-            ]);
+            Log::error('Import-Fehler: ' . $e->getMessage());
+            session()->flash('error', 'Import-Fehler: ' . $e->getMessage());
         }
 
         $this->isLoading = false;
@@ -408,28 +483,16 @@ class PersonImport extends Component
         $person = Person::create([
             'first_name' => $personData['first_name'],
             'last_name' => $personData['last_name'],
-            'remarks' => $personData['remarks'],
-            'group_id' => $group->id,
-            'responsible_person_id' => $this->selectedResponsiblePersonId, // NEU: Verantwortliche Person
             'year' => $this->selectedYear,
-            'present' => false,
-            'can_have_guests' => $group->can_have_guests,
-            'backstage_day_1' => $group->backstage_day_1,
-            'backstage_day_2' => $group->backstage_day_2,
-            'backstage_day_3' => $group->backstage_day_3,
-            'backstage_day_4' => $group->backstage_day_4,
-            'voucher_day_1' => $group->voucher_day_1,
-            'voucher_day_2' => $group->voucher_day_2,
-            'voucher_day_3' => $group->voucher_day_3,
-            'voucher_day_4' => $group->voucher_day_4,
-            'voucher_issued_day_1' => 0,
-            'voucher_issued_day_2' => 0,
-            'voucher_issued_day_3' => 0,
-            'voucher_issued_day_4' => 0,
+            'group_id' => $group->id,
+            'responsible_person_id' => $this->selectedResponsiblePersonId,
+            'backstage_authorized' => $group->backstage_authorized ?? false,
+            'voucher_count' => $group->voucher_count ?? 0,
             'is_duplicate' => false,
+            'remarks' => $personData['remarks'] ?? '',
         ]);
 
-        // NEU: Nummernschild hinzufügen falls vorhanden
+        // Create license plate if provided
         if (!empty($personData['license_plate'])) {
             VehiclePlate::create([
                 'license_plate' => $personData['license_plate'],
@@ -445,23 +508,15 @@ class PersonImport extends Component
         $existingPerson = $personData['existing_person'];
 
         $existingPerson->update([
-            'remarks' => $personData['remarks'],
             'group_id' => $group->id,
-            'responsible_person_id' => $this->selectedResponsiblePersonId, // NEU: Verantwortliche Person
-            'can_have_guests' => $group->can_have_guests,
-            'backstage_day_1' => $group->backstage_day_1,
-            'backstage_day_2' => $group->backstage_day_2,
-            'backstage_day_3' => $group->backstage_day_3,
-            'backstage_day_4' => $group->backstage_day_4,
-            'voucher_day_1' => $group->voucher_day_1,
-            'voucher_day_2' => $group->voucher_day_2,
-            'voucher_day_3' => $group->voucher_day_3,
-            'voucher_day_4' => $group->voucher_day_4,
+            'responsible_person_id' => $this->selectedResponsiblePersonId,
+            'backstage_authorized' => $group->backstage_authorized ?? false,
+            'voucher_count' => $group->voucher_count ?? 0,
+            'remarks' => $personData['remarks'] ?? '',
         ]);
 
-        // NEU: Nummernschild hinzufügen/aktualisieren falls vorhanden
+        // Update license plate
         if (!empty($personData['license_plate'])) {
-            // Prüfen ob bereits ein Nummernschild existiert
             $existingPlate = VehiclePlate::where('person_id', $existingPerson->id)->first();
 
             if ($existingPlate) {
@@ -481,27 +536,22 @@ class PersonImport extends Component
     {
         $this->step = 1;
         $this->file = null;
-        $this->uploadedFile = null;
+        $this->duplicateActions = [];
         $this->fileHeaders = [];
         $this->previewData = [];
         $this->firstNameColumn = null;
         $this->lastNameColumn = null;
         $this->fullNameColumn = null;
         $this->remarksColumn = null;
-        $this->licensePlateColumn = null; // NEU
+        $this->licensePlateColumn = null;
         $this->nameFormat = 'separate';
-        $this->selectedResponsiblePersonId = null; // NEU
+        $this->selectedResponsiblePersonId = null;
         $this->overwriteExisting = false;
         $this->duplicates = [];
         $this->newPersons = [];
         $this->importErrors = [];
         $this->importResults = [];
         $this->isLoading = false;
-
-        // Clean up temporary file
-        if ($this->uploadedFile) {
-            Storage::delete($this->uploadedFile);
-        }
     }
 
     public function render()
