@@ -465,8 +465,8 @@ class PersonImport extends Component
             $this->step = 4;
 
             // Clean up temporary file
-            if ($this->uploadedFile) {
-                Storage::delete($this->uploadedFile);
+            if ($this->file) {
+                $this->file = null;
             }
         } catch (\Exception $e) {
             DB::rollback();
@@ -486,8 +486,27 @@ class PersonImport extends Component
             'year' => $this->selectedYear,
             'group_id' => $group->id,
             'responsible_person_id' => $this->selectedResponsiblePersonId,
-            'backstage_authorized' => $group->backstage_authorized ?? false,
-            'voucher_count' => $group->voucher_count ?? 0,
+            'present' => false,
+
+            // Backstage-Berechtigungen von der Gruppe übernehmen
+            'backstage_day_1' => $group->backstage_day_1 ?? false,
+            'backstage_day_2' => $group->backstage_day_2 ?? false,
+            'backstage_day_3' => $group->backstage_day_3 ?? false,
+            'backstage_day_4' => $group->backstage_day_4 ?? false,
+
+            // Voucher-Berechtigungen von der Gruppe übernehmen
+            'voucher_day_1' => $group->voucher_day_1 ?? 0,
+            'voucher_day_2' => $group->voucher_day_2 ?? 0,
+            'voucher_day_3' => $group->voucher_day_3 ?? 0,
+            'voucher_day_4' => $group->voucher_day_4 ?? 0,
+
+            // Ausgegebene Voucher auf 0 setzen
+            'voucher_issued_day_1' => 0,
+            'voucher_issued_day_2' => 0,
+            'voucher_issued_day_3' => 0,
+            'voucher_issued_day_4' => 0,
+
+            'can_have_guests' => $group->can_have_guests ?? false,
             'is_duplicate' => false,
             'remarks' => $personData['remarks'] ?? '',
         ]);
@@ -507,28 +526,27 @@ class PersonImport extends Component
     {
         $existingPerson = $personData['existing_person'];
 
-        $existingPerson->update([
+        $updateData = [
             'group_id' => $group->id,
             'responsible_person_id' => $this->selectedResponsiblePersonId,
-            'backstage_authorized' => $group->backstage_authorized ?? false,
-            'voucher_count' => $group->voucher_count ?? 0,
-            'remarks' => $personData['remarks'] ?? '',
-        ]);
 
-        // Update license plate
-        if (!empty($personData['license_plate'])) {
-            $existingPlate = VehiclePlate::where('person_id', $existingPerson->id)->first();
+            // Backstage-Berechtigungen von der Gruppe übernehmen
+            'backstage_day_1' => $group->backstage_day_1 ?? false,
+            'backstage_day_2' => $group->backstage_day_2 ?? false,
+            'backstage_day_3' => $group->backstage_day_3 ?? false,
+            'backstage_day_4' => $group->backstage_day_4 ?? false,
 
-            if ($existingPlate) {
-                $existingPlate->update(['license_plate' => $personData['license_plate']]);
-            } else {
-                VehiclePlate::create([
-                    'license_plate' => $personData['license_plate'],
-                    'person_id' => $existingPerson->id,
-                ]);
-            }
-        }
+            // Voucher-Berechtigungen von der Gruppe übernehmen
+            'voucher_day_1' => $group->voucher_day_1 ?? 0,
+            'voucher_day_2' => $group->voucher_day_2 ?? 0,
+            'voucher_day_3' => $group->voucher_day_3 ?? 0,
+            'voucher_day_4' => $group->voucher_day_4 ?? 0,
 
+            'can_have_guests' => $group->can_have_guests ?? false,
+            'remarks' => $personData['remarks'] ?? $existingPerson->remarks,
+        ];
+
+        $existingPerson->update($updateData);
         return $existingPerson;
     }
 

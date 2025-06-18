@@ -505,7 +505,7 @@
         <!-- Personenliste -->
         @if ($persons && count($persons) > 0)
             <div class="mb-6 rounded-lg bg-white p-6 shadow-md">
-                <h3 class="mb-4 text-lg font-semibold">Personen ({{ count($persons) }} gefunden)</h3>
+                <h3 class="mb-4 text-lg font-semibold">Personen ({{ $persons->total() }} gefunden)</h3>
                 <div class="space-y-3" style="max-height: calc(100vh - 400px); overflow-y: auto; min-height: 400px;">
                     @foreach ($persons as $person)
                         <div class="{{ $person->isGuest() ? 'bg-blue-50 border-blue-200' : '' }} rounded-lg border border-gray-200 p-4 transition-colors duration-150 hover:bg-gray-50"
