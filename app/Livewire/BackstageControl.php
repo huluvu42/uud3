@@ -949,6 +949,25 @@ class BackstageControl extends Component
     ');
     }
 
+    public function clearBandSearch()
+    {
+        $this->bandSearch = '';
+        $this->bandSearchResults = [];
+        $this->bandSearchResultsCache = [];
+        $this->lastBandSearchTerm = '';
+        $this->selectedBandFromSearch = null;
+        $this->bandMembers = [];
+
+        // Clear the band search input field in the frontend
+        $this->js('
+        const bandSearchInput = document.getElementById("band-search-input");
+        if (bandSearchInput) {
+            bandSearchInput.value = "";
+        }
+    ');
+
+        $this->dispatch('band-search-cleared');
+    }
 
     // Focus-Methoden
     public function focusSearch()
