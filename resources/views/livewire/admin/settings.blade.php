@@ -109,7 +109,36 @@
                                     </div>
                                 @endforeach
                             </div>
+                            <div class="border-t pt-4">
+                                <div class="flex items-center space-x-3">
+                                    <div class="flex-1">
+                                        <label class="mb-1 block text-sm font-medium text-gray-700">
+                                            Alle verbleibenden Tage
+                                            <span class="text-xs text-gray-500"><br>(Zugang an allen
+                                                verbleibenden Tagen)</span>
+                                        </label>
+                                        <div class="flex items-center space-x-2">
+                                            <!-- Color Picker -->
+                                            <input type="color" wire:model="wristband_color_day_all"
+                                                class="h-10 w-12 cursor-pointer rounded border border-gray-300"
+                                                title="Farbe auswählen">
+                                            <!-- Text Input für Farbnamen -->
+                                            <input type="text" wire:model="wristband_color_day_all"
+                                                class="flex-1 rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                placeholder="z.B. #FFD700 oder Gold (optional)">
+                                            <!-- Farbvorschau -->
+                                            <div class="h-10 w-10 rounded border-2 border-gray-300"
+                                                style="background-color: {{ $this->wristband_color_day_all ?: '#f3f4f6' }}"
+                                                title="Farbvorschau"></div>
+                                        </div>
+                                        @error('wristband_color_day_all')
+                                            <span class="text-sm text-red-500">{{ $message }}</span>
+                                        @enderror
+                                    </div>
+                                </div>
+                            </div>
                         </div>
+
                     </div>
 
                     <!-- Voucher Settings -->
@@ -250,11 +279,13 @@
         // Color Input Synchronisation
         document.addEventListener('DOMContentLoaded', function() {
             // Für jeden Tag die Synchronisation zwischen Color Picker und Text Input einrichten
-            for (let day = 1; day <= 4; day++) {
+            const fields = ['1', '2', '3', '4', 'all'];
+
+            fields.forEach(field => {
                 const colorInput = document.querySelector(
-                    `input[wire\\:model="wristband_color_day_${day}"][type="color"]`);
+                    `input[wire\\:model="wristband_color_day_${field}"][type="color"]`);
                 const textInput = document.querySelector(
-                    `input[wire\\:model="wristband_color_day_${day}"][type="text"]`);
+                    `input[wire\\:model="wristband_color_day_${field}"][type="text"]`);
 
                 if (colorInput && textInput) {
                     // Wenn Color Picker geändert wird, Text Input aktualisieren
@@ -272,7 +303,7 @@
                         }
                     });
                 }
-            }
+            });
         });
     </script>
 </div>

@@ -19,6 +19,7 @@ class Settings extends Component
     public $wristband_color_day_2;
     public $wristband_color_day_3;
     public $wristband_color_day_4;
+    public $wristband_color_day_all;
     public $year;
     public $latest_arrival_time_minutes = 60;
 
@@ -55,6 +56,7 @@ class Settings extends Component
             $this->wristband_color_day_2 = $this->settings->wristband_color_day_2;
             $this->wristband_color_day_3 = $this->settings->wristband_color_day_3;
             $this->wristband_color_day_4 = $this->settings->wristband_color_day_4;
+            $this->wristband_color_day_all = $this->settings->wristband_color_day_all;
 
             // Neue Ankunftszeit
             $this->latest_arrival_time_minutes = $this->settings->latest_arrival_time_minutes ?? 60;
@@ -86,6 +88,7 @@ class Settings extends Component
             'wristband_color_day_2' => 'required',
             'wristband_color_day_3' => 'required',
             'wristband_color_day_4' => 'required',
+            'wristband_color_day_all' => 'nullable',
             'latest_arrival_time_minutes' => 'required|integer|min:1|max:480',
             'voucher_issuance_rule' => 'required|in:current_day_only,current_and_past,all_days',
             'voucher_output_mode' => 'required|in:single,all_available',
@@ -103,6 +106,7 @@ class Settings extends Component
                 'wristband_color_day_2' => $this->wristband_color_day_2,
                 'wristband_color_day_3' => $this->wristband_color_day_3,
                 'wristband_color_day_4' => $this->wristband_color_day_4,
+                'wristband_color_day_all' => $this->wristband_color_day_all,
                 'latest_arrival_time_minutes' => $this->latest_arrival_time_minutes,
                 'voucher_issuance_rule' => $this->voucher_issuance_rule,
                 'voucher_output_mode' => $this->voucher_output_mode,

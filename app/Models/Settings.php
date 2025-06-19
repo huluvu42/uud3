@@ -18,6 +18,7 @@ class Settings extends Model
         'wristband_color_day_2',
         'wristband_color_day_3',
         'wristband_color_day_4',
+        'wristband_color_day_all',
         'voucher_issuance_rule',
         'voucher_output_mode',
         'voucher_purchase_mode',
@@ -72,6 +73,11 @@ class Settings extends Model
     {
         $colorField = "wristband_color_day_{$day}";
         return $this->{$colorField};
+    }
+
+    public function getColorForAllDays()
+    {
+        return $this->wristband_color_day_all;
     }
 
     // Prüfen ob ein bestimmtes Datum ein Festival-Tag ist

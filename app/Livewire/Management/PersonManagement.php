@@ -12,10 +12,11 @@ use App\Models\Settings;
 use Livewire\Component;
 use Livewire\WithPagination;
 use App\Traits\ManagesVehiclePlates;
+use App\Traits\HandlesWristbands;
 
 class PersonManagement extends Component
 {
-    use WithPagination, ManagesVehiclePlates;
+    use WithPagination, ManagesVehiclePlates, HandlesWristbands;
 
     // Person Properties
     public $first_name = '';
@@ -480,36 +481,6 @@ class PersonManagement extends Component
 
         $statusText = $guest->present ? 'anwesend' : 'abwesend';
         session()->flash('success', "{$guest->first_name} {$guest->last_name} ist jetzt als {$statusText} markiert.");
-    }
-
-    // Wristband color helper
-    public function getWristbandColorForPerson($person)
-    {
-        if (!$this->settings) return null;
-
-        $currentDay = $this->settings->getCurrentDay();
-
-        if (!$person->{"backstage_day_{$currentDay}"}) {
-            return null;
-        }
-
-        $hasAllRemainingDays = true;
-        for ($day = $currentDay; $day <= 4; $day++) {
-            if (!$person->{"backstage_day_$day"}) {
-                $hasAllRemainingDays = false;
-                break;
-            }
-        }
-
-        return $hasAllRemainingDays
-            ? $this->settings->getColorForDay(4)
-            : $this->settings->getColorForDay($currentDay);
-    }
-
-    public function hasAnyBackstageAccess($person)
-    {
-        return $person->backstage_day_1 || $person->backstage_day_2 ||
-            $person->backstage_day_3 || $person->backstage_day_4;
     }
 
     // GEFIXT: Gruppen-basierte Voreinstellungen - OHNE wire:change

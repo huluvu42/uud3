@@ -23,11 +23,12 @@ use App\Services\BandStatusService;
 // Trait Imports
 use App\Traits\ManagesGuests;
 use App\Traits\ManagesVehiclePlates;
+use App\Traits\HandlesWristbands;
 
 class BackstageControl extends Component
 {
 
-    use ManagesVehiclePlates, ManagesGuests;
+    use ManagesVehiclePlates, ManagesGuests, HandlesWristbands;
 
     public $search = '';
     public $bandSearch = '';
@@ -765,40 +766,6 @@ class BackstageControl extends Component
     public function updatedPurchaseStageId($value)
     {
         $this->dispatch('stage-selected', $value);
-    }
-
-    // Bändchen-Farbe
-    public function getWristbandColorForPerson($person)
-    {
-        if (!$this->settings) return null;
-
-        if (!$person->{"backstage_day_{$this->currentDay}"}) {
-            return null;
-        }
-
-        $hasAllRemainingDays = true;
-        for ($day = $this->currentDay; $day <= 4; $day++) {
-            if (!$person->{"backstage_day_$day"}) {
-                $hasAllRemainingDays = false;
-                break;
-            }
-        }
-
-        if ($hasAllRemainingDays) {
-            return $this->settings->getColorForDay(4);
-        }
-
-        return $this->settings->getColorForDay($this->currentDay);
-    }
-
-    public function hasAnyBackstageAccess($person)
-    {
-        for ($day = 1; $day <= 4; $day++) {
-            if ($person->{"backstage_day_$day"}) {
-                return true;
-            }
-        }
-        return false;
     }
 
     // Heutige Bands anzeigen
