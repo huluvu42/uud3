@@ -235,7 +235,7 @@
                                 @enderror
                             </div>
                             <div>
-                                <label class="mb-1 block text-sm font-medium text-gray-700">Nachname *</label>
+                                <label class="mb-1 block text-sm font-medium text-gray-700">Nachname (optinal)</label>
                                 <input type="text" wire:model="guest_last_name"
                                     class="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     placeholder="Muster">

@@ -163,6 +163,32 @@ class Person extends Model
         return $this->first_name . ' ' . $this->last_name;
     }
 
+    public function getDisplayNameAttribute()
+    {
+        // Für Gäste von Bandmitgliedern: Falls kein Nachname, nur Vorname anzeigen
+        if ($this->isGuestOfBandMember() && empty($this->last_name)) {
+            return $this->first_name;
+        }
+
+        // Für alle anderen: Vollständiger Name
+        return $this->first_name . ' ' . $this->last_name;
+    }
+
+    public function isGuestOfBandMember()
+    {
+        // Prüfen ob diese Person ein Gast eines Bandmitglieds ist
+        if (!$this->responsible_person_id) {
+            return false;
+        }
+
+        $responsiblePerson = $this->responsiblePerson;
+
+        return $responsiblePerson &&
+            $responsiblePerson->band_id &&
+            $this->band_id &&
+            $responsiblePerson->band_id === $this->band_id;
+    }
+
     // An welchen Tagen hat diese Person Backstage-Zugang?
     public function getBackstageDaysAttribute()
     {

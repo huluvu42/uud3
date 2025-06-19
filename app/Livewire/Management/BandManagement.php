@@ -826,7 +826,7 @@ class BandManagement extends Component
     {
         $this->validate([
             'guest_first_name' => 'required|string|max:255',
-            'guest_last_name' => 'required|string|max:255',
+            'guest_last_name' => 'nullable|string|max:255',
         ]);
 
         // Double-check für Race Conditions

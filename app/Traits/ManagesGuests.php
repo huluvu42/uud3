@@ -68,7 +68,7 @@ trait ManagesGuests
     {
         $this->validate([
             'guest_first_name' => 'required|string|max:255',
-            'guest_last_name' => 'required|string|max:255',
+            'guest_last_name' => 'nullable|string|max:255',
         ]);
 
         if (!$this->selectedMemberForGuest) {
@@ -98,7 +98,7 @@ trait ManagesGuests
                 // Gast erstellen
                 Person::create([
                     'first_name' => $this->guest_first_name,
-                    'last_name' => $this->guest_last_name,
+                    'last_name' => $this->guest_last_name ?: '',
                     'present' => false,
                     'can_have_guests' => false, // Gäste können keine eigenen Gäste haben
                     'backstage_day_1' => $guestBackstageAccess['backstage_day_1'],
