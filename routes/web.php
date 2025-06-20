@@ -16,6 +16,10 @@ use App\Livewire\Admin\FieldLabel;
 use App\Livewire\Admin\DuplicateManagement;
 use App\Livewire\Admin\PersonImport;
 use App\Livewire\Admin\BandImport;
+use App\Http\Controllers\BandRegistrationController;
+use App\Livewire\Admin\BandRegistrationLinks;
+use App\Livewire\Admin\BandRegistrationDashboard;
+use App\Livewire\Admin\BandManagerImport;
 
 /*
 |--------------------------------------------------------------------------
@@ -179,6 +183,31 @@ Route::middleware(['auth', 'admin:admin'])->prefix('admin')->name('admin.')->gro
 
     Route::get('/duplicates', DuplicateManagement::class)
         ->name('duplicates');
+
+    // Band Registration Management
+    Route::get('/band-registration-links', BandRegistrationLinks::class)
+        ->name('band-registration-links');
+
+    Route::get('/band-registration-dashboard', BandRegistrationDashboard::class)
+        ->name('band-registration-dashboard');
+
+    Route::get('/band-manager-import', BandManagerImport::class)
+        ->name('band-manager-import');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Öffentliche Band-Registration Routes
+|--------------------------------------------------------------------------
+*/
+
+Route::prefix('band-registration')->name('band.register.')->group(function () {
+    Route::get('/{token}', [BandRegistrationController::class, 'show'])
+        ->name('index');
+    Route::post('/{token}', [BandRegistrationController::class, 'store'])
+        ->name('store');
+    Route::get('/{token}/success', [BandRegistrationController::class, 'success'])
+        ->name('success');
 });
 
 // ===== SPECIAL PERMISSION ROUTES =====

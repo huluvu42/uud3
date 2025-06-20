@@ -123,4 +123,19 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    // Admin Email Addresses für Benachrichtigungen
+    'admin_emails' => [
+        'admin@festival.com',
+        'bands@festival.com',
+        // Weitere Admin-Emails hier hinzufügen
+    ],
+
+    // Registration System Settings
+    'registration' => [
+        'token_expiry_days' => env('REGISTRATION_TOKEN_EXPIRY_DAYS', 30),
+        'reminder_after_days' => env('REGISTRATION_REMINDER_AFTER_DAYS', 7),
+        'max_travel_party' => env('REGISTRATION_MAX_TRAVEL_PARTY', 50),
+        'max_vehicles' => env('REGISTRATION_MAX_VEHICLES', 10),
+    ],
+
 ];
