@@ -28,7 +28,17 @@ class Band extends Model
         'performance_duration_day_4',
         'hotel',
         'comment',
-        'travel_costs_comment'
+        'travel_costs_comment',
+        'travel_party',
+        'manager_first_name',
+        'manager_last_name',
+        'manager_email',
+        'manager_phone',
+        'registration_token',
+        'registration_token_expires_at',
+        'registration_completed',
+        'registration_link_sent_at',
+        'registration_reminder_sent_at'
     ];
 
     protected $casts = [
@@ -49,6 +59,10 @@ class Band extends Model
         'performance_duration_day_2' => 'integer',
         'performance_duration_day_3' => 'integer',
         'performance_duration_day_4' => 'integer',
+        'registration_token_expires_at' => 'datetime',
+        'registration_completed' => 'boolean',
+        'registration_link_sent_at' => 'datetime',
+        'registration_reminder_sent_at' => 'datetime',
     ];
 
     public function stage()
@@ -170,5 +184,49 @@ class Band extends Model
             3 => $this->getFormattedPerformanceDurationForDay(3),
             4 => $this->getFormattedPerformanceDurationForDay(4),
         ];
+    }
+
+    // Token validieren
+    public function isTokenValid($token)
+    {
+        return $this->registration_token === $token
+            && $this->registration_token_expires_at > now()
+            && !$this->registration_completed;
+    }
+
+    // Registration URL generieren
+    public function getRegistrationUrlAttribute()
+    {
+        return route('band.register', ['token' => $this->registration_token]);
+    }
+
+    // Manager Vollname
+    public function getManagerFullNameAttribute()
+    {
+        return trim($this->manager_first_name . ' ' . $this->manager_last_name);
+    }
+
+    // Prüfen ob Manager-Email vorhanden
+    public function hasManagerContact()
+    {
+        return !empty($this->manager_email);
+    }
+
+    // Automatischen Email-Versand prüfen
+    public function canSendRegistrationEmail()
+    {
+        return $this->hasManagerContact()
+            && $this->registration_token
+            && !$this->registration_completed;
+    }
+
+    // Reminder-Email erforderlich prüfen
+    public function needsReminder()
+    {
+        return $this->registration_token
+            && !$this->registration_completed
+            && $this->registration_link_sent_at
+            && $this->registration_link_sent_at->addDays(7)->isPast()
+            && (!$this->registration_reminder_sent_at || $this->registration_reminder_sent_at->addDays(7)->isPast());
     }
 }
