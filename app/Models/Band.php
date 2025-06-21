@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Route;
 
 class Band extends Model
 {
@@ -16,8 +18,8 @@ class Band extends Model
         'all_present',
         'travel_costs',
         'year',
-        'performance_time', // Legacy field - kann später entfernt werden
-        'performance_duration', // Legacy field - kann später entfernt werden
+        'performance_time', // Legacy
+        'performance_duration',
         'performance_time_day_1',
         'performance_time_day_2',
         'performance_time_day_3',
@@ -71,6 +73,11 @@ class Band extends Model
     }
 
     public function members()
+    {
+        return $this->hasMany(Person::class);
+    }
+
+    public function persons()
     {
         return $this->hasMany(Person::class);
     }
@@ -228,5 +235,53 @@ class Band extends Model
             && $this->registration_link_sent_at
             && $this->registration_link_sent_at->addDays(7)->isPast()
             && (!$this->registration_reminder_sent_at || $this->registration_reminder_sent_at->addDays(7)->isPast());
+    }
+
+    public function generateRegistrationToken()
+    {
+        $this->registration_token = Str::random(64);
+        $this->registration_token_expires_at = now()->addDays(30);
+        $this->registration_completed = false;
+        $this->save();
+
+        return $this->registration_token;
+    }
+
+    /**
+     * Prüfen ob Registration Token abgelaufen ist
+     */
+    public function isRegistrationExpired()
+    {
+        return $this->registration_token
+            && $this->registration_token_expires_at
+            && $this->registration_token_expires_at->isPast()
+            && !$this->registration_completed;
+    }
+
+    /**
+     * Scopes für bessere Queries
+     */
+    public function scopeWithManagerEmail($query)
+    {
+        return $query->whereNotNull('manager_email');
+    }
+
+    public function scopeRegistrationCompleted($query)
+    {
+        return $query->where('registration_completed', true);
+    }
+
+    public function scopeRegistrationPending($query)
+    {
+        return $query->whereNotNull('registration_token')
+            ->where('registration_completed', false);
+    }
+
+    public function scopeNeedsReminder($query)
+    {
+        return $query->whereNotNull('registration_token')
+            ->where('registration_completed', false)
+            ->where('registration_link_sent_at', '<', now()->subDays(7))
+            ->whereNull('registration_reminder_sent_at');
     }
 }

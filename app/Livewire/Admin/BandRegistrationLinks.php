@@ -57,6 +57,11 @@ class BandRegistrationLinks extends Component
                     ->where('registration_link_sent_at', '<', now()->subDays(7))
                     ->whereNull('registration_reminder_sent_at');
                 break;
+            case 'token_only':
+                $query->whereNotNull('registration_token')
+                    ->where('registration_completed', false)
+                    ->whereNull('registration_link_sent_at');
+                break;
             default:
                 // all - keine weitere Filterung
                 break;
@@ -95,6 +100,134 @@ class BandRegistrationLinks extends Component
                 ? round(Band::where('registration_completed', true)->count() / Band::whereNotNull('registration_token')->count() * 100, 1)
                 : 0,
         ];
+    }
+
+    /**
+     * Links generieren ohne Email-Versendung
+     */
+    public function generateTokensOnly()
+    {
+        if (empty($this->selectedBands)) {
+            session()->flash('error', 'Bitte wählen Sie mindestens eine Band aus.');
+            return;
+        }
+
+        $generated = 0;
+        $alreadyExisting = 0;
+
+        foreach ($this->selectedBands as $bandId) {
+            $band = Band::find($bandId);
+            if (!$band) continue;
+
+            // Nur generieren wenn noch kein Token vorhanden
+            if (!$band->registration_token) {
+                $band->generateRegistrationToken();
+                $generated++;
+            } else {
+                $alreadyExisting++;
+            }
+        }
+
+        $message = "Links generiert: {$generated}";
+        if ($alreadyExisting > 0) {
+            $message .= ", Bereits vorhanden: {$alreadyExisting}";
+        }
+
+        session()->flash('message', $message);
+
+        $this->selectedBands = [];
+        $this->mount();
+    }
+
+    /**
+     * Erneuere Token (generiere neuen Token auch wenn bereits vorhanden)
+     */
+    public function regenerateTokens()
+    {
+        if (empty($this->selectedBands)) {
+            session()->flash('error', 'Bitte wählen Sie mindestens eine Band aus.');
+            return;
+        }
+
+        $regenerated = 0;
+
+        foreach ($this->selectedBands as $bandId) {
+            $band = Band::find($bandId);
+            if (!$band) continue;
+
+            // Immer neuen Token generieren (überschreibt bestehende)
+            $band->generateRegistrationToken();
+            $regenerated++;
+        }
+
+        session()->flash('message', "Tokens erneuert: {$regenerated}");
+
+        $this->selectedBands = [];
+        $this->mount();
+    }
+
+    /**
+     * Alle ausgewählten Links in die Zwischenablage kopieren
+     */
+    public function copyAllLinks()
+    {
+        if (empty($this->selectedBands)) {
+            session()->flash('error', 'Bitte wählen Sie mindestens eine Band aus.');
+            return;
+        }
+
+        $links = [];
+        $bandsWithoutToken = [];
+
+        foreach ($this->selectedBands as $bandId) {
+            $band = Band::find($bandId);
+            if (!$band) continue;
+
+            if ($band->registration_token) {
+                $links[] = $band->band_name . ': ' . $band->registration_url;
+            } else {
+                $bandsWithoutToken[] = $band->band_name;
+            }
+        }
+
+        if (!empty($bandsWithoutToken)) {
+            session()->flash('error', 'Folgende Bands haben noch keine Links: ' . implode(', ', $bandsWithoutToken));
+            return;
+        }
+
+        $allLinks = implode("\n", $links);
+
+        $this->dispatch('copy-to-clipboard', text: $allLinks);
+
+        session()->flash('message', count($links) . ' Links wurden in die Zwischenablage kopiert.');
+    }
+
+    /**
+     * Token für einzelne Band generieren
+     */
+    public function generateSingleToken($bandId)
+    {
+        $band = Band::find($bandId);
+        if ($band && !$band->registration_token) {
+            $band->generateRegistrationToken();
+            session()->flash('message', 'Link für ' . $band->band_name . ' wurde generiert.');
+        }
+
+        $this->mount();
+    }
+
+    /**
+     * Token für einzelne Band erneuern
+     */
+    public function regenerateSingleToken($bandId)
+    {
+        $band = Band::find($bandId);
+        if ($band) {
+            $band->generateRegistrationToken();
+            session()->flash('message', 'Token für ' . $band->band_name . ' wurde erneuert.');
+        }
+
+        $this->mount();
     }
 
     public function generateTokensAndSendEmails()

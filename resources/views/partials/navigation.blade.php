@@ -61,7 +61,23 @@
                     <div class="relative border-r border-gray-300 pr-4">
                         <div class="dropdown">
                             <button onclick="toggleDropdown('adminDropdown')"
-                                class="{{ request()->routeIs(['admin.users', 'admin.settings', 'admin.changelog', 'admin.knack-import', 'admin.import', 'admin.datenimport', 'admin.knack-objects', 'admin.knack-objekte']) ? 'ring-2 ring-blue-300' : '' }} flex items-center space-x-1 rounded bg-blue-100 px-3 py-2 text-sm text-blue-700 transition-colors hover:bg-blue-200">
+                                class="{{ request()->routeIs([
+                                    'admin.users',
+                                    'admin.settings',
+                                    'admin.changelog',
+                                    'admin.knack-import',
+                                    'admin.import',
+                                    'admin.datenimport',
+                                    'admin.knack-objects',
+                                    'admin.knack-objekte',
+                                    'admin.duplicates',
+                                    'admin.duplikate',
+                                    'admin.band-registration-dashboard',
+                                    'admin.band-registration-links',
+                                    'admin.band-manager-import',
+                                ])
+                                    ? 'ring-2 ring-blue-300'
+                                    : '' }} flex items-center space-x-1 rounded bg-blue-100 px-3 py-2 text-sm text-blue-700 transition-colors hover:bg-blue-200">
                                 <span>⚙️ Admin</span>
                                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -106,6 +122,25 @@
                                     <a href="{{ route('admin.changelog') }}"
                                         class="{{ request()->routeIs('admin.changelog') ? 'bg-blue-50 text-blue-700' : '' }} block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                         📋 Protokoll anzeigen
+                                    </a>
+                                    <div class="my-1 border-t border-gray-200"></div>
+                                    <div class="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                        Band-Registrierung
+                                    </div>
+
+                                    <a href="{{ route('admin.band-registration-dashboard') }}"
+                                        class="{{ request()->routeIs('admin.band-registration-dashboard') ? 'bg-blue-50 text-blue-700' : '' }} block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                        📊 Registration Dashboard
+                                    </a>
+
+                                    <a href="{{ route('admin.band-registration-links') }}"
+                                        class="{{ request()->routeIs('admin.band-registration-links') ? 'bg-blue-50 text-blue-700' : '' }} block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                        🔗 Registrierungslinks
+                                    </a>
+
+                                    <a href="{{ route('admin.band-manager-import') }}"
+                                        class="{{ request()->routeIs('admin.band-manager-import') ? 'bg-blue-50 text-blue-700' : '' }} block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                        📧 Manager-Daten Import
                                     </a>
                                 </div>
                             </div>

@@ -201,13 +201,13 @@ Route::middleware(['auth', 'admin:admin'])->prefix('admin')->name('admin.')->gro
 |--------------------------------------------------------------------------
 */
 
-Route::prefix('band-registration')->name('band.register.')->group(function () {
+Route::prefix('band-registration')->group(function () {
     Route::get('/{token}', [BandRegistrationController::class, 'show'])
-        ->name('index');
+        ->name('band.register');
     Route::post('/{token}', [BandRegistrationController::class, 'store'])
-        ->name('store');
+        ->name('band.register.store');
     Route::get('/{token}/success', [BandRegistrationController::class, 'success'])
-        ->name('success');
+        ->name('band.register.success');
 });
 
 // ===== SPECIAL PERMISSION ROUTES =====

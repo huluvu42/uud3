@@ -3,7 +3,7 @@
 {{-- Vollständige Erfolgsseite nach Registrierung --}}
 {{-- ============================================================================ --}}
 
-@extends('layouts.app')
+@extends('layouts.public')
 
 @section('title', 'Registrierung erfolgreich - ' . $band->band_name)
 

@@ -2,7 +2,7 @@
 {{-- Öffentliches Registrierungsformular --}}
 {{-- ============================================================================ --}}
 
-@extends('layouts.app')
+@extends('layouts.public')
 
 @section('title', 'Bandmitglieder registrieren - ' . $band->band_name)
 
@@ -78,11 +78,11 @@
                     </div>
                 </div>
 
-                <!-- Schritt 2: Bandmitglieder -->
+                <!-- Schritt 2: Bandmitglieder (erweitert) -->
                 <div class="rounded-lg bg-white p-8 shadow-lg">
                     <h3 class="mb-6 text-lg font-semibold text-gray-900">2. Bandmitglieder</h3>
 
-                    <div id="members-container" class="space-y-4">
+                    <div id="members-container" class="space-y-6">
                         @if (old('members') || $existingMembers)
                             @php
                                 $members = old('members', $existingMembers);
@@ -90,61 +90,73 @@
                             @endphp
 
                             @for ($i = 0; $i < $memberCount; $i++)
-                                <div class="member-row grid grid-cols-1 gap-4 rounded-lg bg-gray-50 p-4 md:grid-cols-2">
-                                    <div>
-                                        <label class="mb-1 block text-sm font-medium text-gray-700">
-                                            Vorname Person {{ $i + 1 }} <span class="text-red-500">*</span>
-                                        </label>
-                                        <input type="text" name="members[{{ $i }}][first_name]"
-                                            class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            value="{{ $members[$i]['first_name'] ?? '' }}" required>
+                                <div class="member-row rounded-lg bg-gray-50 p-6">
+                                    <h4 class="mb-4 border-b border-gray-200 pb-2 font-medium text-gray-900">
+                                        👤 Person {{ $i + 1 }}
+                                    </h4>
+
+                                    <!-- Hauptperson -->
+                                    <div class="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                                        <div>
+                                            <label class="mb-1 block text-sm font-medium text-gray-700">
+                                                Vorname <span class="text-red-500">*</span>
+                                            </label>
+                                            <input type="text" name="members[{{ $i }}][first_name]"
+                                                class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                value="{{ $members[$i]['first_name'] ?? '' }}" required>
+                                        </div>
+                                        <div>
+                                            <label class="mb-1 block text-sm font-medium text-gray-700">
+                                                Nachname <span class="text-red-500">*</span>
+                                            </label>
+                                            <input type="text" name="members[{{ $i }}][last_name]"
+                                                class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                value="{{ $members[$i]['last_name'] ?? '' }}" required>
+                                        </div>
                                     </div>
-                                    <div>
+
+                                    <!-- KFZ-Kennzeichen für diese Person -->
+                                    <div class="mb-4">
                                         <label class="mb-1 block text-sm font-medium text-gray-700">
-                                            Nachname Person {{ $i + 1 }} <span class="text-red-500">*</span>
+                                            🚗 KFZ-Kennzeichen (optional)
                                         </label>
-                                        <input type="text" name="members[{{ $i }}][last_name]"
-                                            class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            value="{{ $members[$i]['last_name'] ?? '' }}" required>
+                                        <input type="text" name="members[{{ $i }}][vehicle_plate]"
+                                            class="w-full rounded-md border border-gray-300 px-3 py-2 uppercase shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            placeholder="z.B. B-MW 1234" value="{{ $members[$i]['vehicle_plate'] ?? '' }}">
+                                        <p class="mt-1 text-xs text-gray-500">Falls diese Person mit eigenem Fahrzeug
+                                            anreist</p>
+                                    </div>
+
+                                    <!-- Gast für diese Person -->
+                                    <div class="border-t border-gray-200 pt-4">
+                                        <h5 class="mb-3 text-sm font-medium text-gray-700">👥 Gast (optional)</h5>
+                                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                            <div>
+                                                <label class="mb-1 block text-sm font-medium text-gray-600">
+                                                    Gast Vorname
+                                                </label>
+                                                <input type="text" name="members[{{ $i }}][guest_first_name]"
+                                                    class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    value="{{ $members[$i]['guest_first_name'] ?? '' }}"
+                                                    placeholder="Vorname des Gastes">
+                                            </div>
+                                            <div>
+                                                <label class="mb-1 block text-sm font-medium text-gray-600">
+                                                    Gast Nachname
+                                                </label>
+                                                <input type="text" name="members[{{ $i }}][guest_last_name]"
+                                                    class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    value="{{ $members[$i]['guest_last_name'] ?? '' }}"
+                                                    placeholder="Nachname des Gastes">
+                                            </div>
+                                        </div>
+                                        <p class="mt-1 text-xs text-gray-500">Falls diese Person einen Gast mitbringt</p>
                                     </div>
                                 </div>
                             @endfor
                         @endif
                     </div>
-
-                    <p class="mt-4 text-sm text-gray-600">
-                        💡 <strong>Tipp:</strong> Ändern Sie die Anzahl oben, um automatisch Felder hinzuzufügen oder zu
-                        entfernen.
-                    </p>
                 </div>
-
-                <!-- Schritt 3: Fahrzeugkennzeichen -->
-                <div class="rounded-lg bg-white p-8 shadow-lg">
-                    <h3 class="mb-6 text-lg font-semibold text-gray-900">3. Fahrzeugkennzeichen (optional)</h3>
-
-                    <div id="vehicles-container" class="space-y-3">
-                        @php
-                            $vehiclePlates = old('vehicle_plates', $existingVehicles);
-                            $vehicleCount = max(count($vehiclePlates), 1);
-                        @endphp
-
-                        @for ($i = 0; $i < $vehicleCount + 2; $i++)
-                            <div class="flex items-center space-x-3">
-                                <div class="flex-1">
-                                    <input type="text" name="vehicle_plates[]"
-                                        class="w-full rounded-md border border-gray-300 px-3 py-2 uppercase shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        placeholder="z.B. B-MW 1234" value="{{ $vehiclePlates[$i] ?? '' }}">
-                                </div>
-                                <span class="text-sm text-gray-400">🚗</span>
-                            </div>
-                        @endfor
-                    </div>
-
-                    <p class="mt-4 text-sm text-gray-600">
-                        Geben Sie alle Kennzeichen von Fahrzeugen an, die zum Festival mitgebracht werden.
-                    </p>
-                </div>
-
                 <!-- Schritt 4: Zusätzliche Informationen -->
                 <div class="rounded-lg bg-white p-8 shadow-lg">
                     <h3 class="mb-6 text-lg font-semibold text-gray-900">4. Zusätzliche Informationen</h3>
@@ -227,42 +239,95 @@
 
             function updateMemberFields() {
                 const count = parseInt(travelPartyInput.value) || 0;
+
+                // Container leeren
                 membersContainer.innerHTML = '';
 
+                // Neue Felder generieren
                 for (let i = 0; i < count; i++) {
                     const memberDiv = document.createElement('div');
-                    memberDiv.className =
-                        'member-row grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg';
+                    memberDiv.className = 'member-row bg-gray-50 rounded-lg p-6';
                     memberDiv.innerHTML = `
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
-                        Vorname Person ${i + 1} <span class="text-red-500">*</span>
-                    </label>
-                    <input type="text" 
-                           name="members[${i}][first_name]" 
-                           class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
-                           required>
+                <h4 class="font-medium text-gray-900 mb-4 border-b border-gray-200 pb-2">
+                    👤 Person ${i + 1}
+                </h4>
+                
+                <!-- Hauptperson -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">
+                            Vorname <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" name="members[${i}][first_name]" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                               required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">
+                            Nachname <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" name="members[${i}][last_name]" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                               required>
+                    </div>
                 </div>
-                <div>
+                
+                <!-- KFZ-Kennzeichen -->
+                <div class="mb-4">
                     <label class="block text-sm font-medium text-gray-700 mb-1">
-                        Nachname Person ${i + 1} <span class="text-red-500">*</span>
+                        🚗 KFZ-Kennzeichen (optional)
                     </label>
-                    <input type="text" 
-                           name="members[${i}][last_name]" 
-                           class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
-                           required>
+                    <input type="text" name="members[${i}][vehicle_plate]" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 uppercase" 
+                           placeholder="z.B. B-MW 1234">
+                    <p class="text-xs text-gray-500 mt-1">Falls diese Person mit eigenem Fahrzeug anreist</p>
+                </div>
+                
+                <!-- Gast -->
+                <div class="border-t border-gray-200 pt-4">
+                    <h5 class="text-sm font-medium text-gray-700 mb-3">👥 Gast (optional)</h5>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-600 mb-1">
+                                Gast Vorname
+                            </label>
+                            <input type="text" name="members[${i}][guest_first_name]" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                                   placeholder="Vorname des Gastes">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-600 mb-1">
+                                Gast Nachname
+                            </label>
+                            <input type="text" name="members[${i}][guest_last_name]" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                                   placeholder="Nachname des Gastes">
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">Falls diese Person einen Gast mitbringt</p>
                 </div>
             `;
                     membersContainer.appendChild(memberDiv);
                 }
+
+                // Info-Text hinzufügen wenn Container leer ist
+                if (count === 0) {
+                    membersContainer.innerHTML =
+                        '<p class="text-gray-500 text-center py-8">Geben Sie oben die Anzahl der Bandmitglieder ein.</p>';
+                }
             }
 
+            // Event Listeners hinzufügen
             travelPartyInput.addEventListener('input', updateMemberFields);
+            travelPartyInput.addEventListener('change', updateMemberFields);
 
             // Initial update wenn Seite geladen wird
-            if (travelPartyInput.value && !membersContainer.children.length) {
+            if (travelPartyInput.value) {
                 updateMemberFields();
             }
+
+            // Für den Fall dass das Input-Feld bereits einen Wert hat beim Laden
+            setTimeout(updateMemberFields, 100);
         });
     </script>
 @endsection
