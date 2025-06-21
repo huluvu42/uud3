@@ -11,7 +11,7 @@
     <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
         style="max-height: calc(100vh - 400px); overflow-y: auto;">
         @foreach ($todaysBands as $band)
-            <div wire:click="selectBand({{ $band->id }})" wire:loading.class="pointer-events-none opacity-75"
+            <div wire:click="selectBandFromSearch({{ $band->id }})" wire:loading.class="pointer-events-none opacity-75"
                 wire:target="selectBand"
                 class="{{ $selectedBand && $selectedBand->id === $band->id ? 'ring-2 ring-blue-500 bg-blue-50' : '' }} cursor-pointer rounded-lg border border-gray-200 p-4 hover:bg-gray-50">
 
